@@ -2,7 +2,7 @@ import numpy as np
 import scipy.special as sp
 from collections import defaultdict
 from scipy.special import genlaguerre
-from vispy import app, scene
+#from vispy import app, scene
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from itertools import combinations
@@ -165,8 +165,9 @@ class GeneralFunctions:
             print(f"Warnung: Fehler in Kugelflächenfunktion für l={l}, m={m}: {str(e)}")
             return np.zeros_like(theta)
 
+    """
     def add_orbital(self, n, l, m, Z, electron_count, points_plotted):
-        """Visualisierung"""
+        Visualisierung
         x, y, z, density = self.calculate_orbital_points(n, l, m, Z, electron_count,
                                                          threshold=self.visual_dict["prob_threshold"],
                                                          num_points=self.visual_dict["num_points"],
@@ -193,6 +194,8 @@ class GeneralFunctions:
             )
             self.view.add(scatter)
         return points_plotted
+        
+    """
 
     def get_density_color(self, density):
         red = np.clip(density * 2, 0, 1)
