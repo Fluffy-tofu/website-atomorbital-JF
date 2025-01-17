@@ -388,5 +388,6 @@ def calculate_numerical():
         print(f"Fehler in calculate_numerical: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
