@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Numerische Simulation - Zeeman-Effekt</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+        #controls {
+            width: 300px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        #visualization {
+            flex-grow: 1;
+            position: relative;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="range"], input[type="number"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+        .state-info {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        #backButton {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: #333;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="container">
+        <button id="backButton" onclick="window.location.href='/'">← Zurück</button>
+        <div id="controls">
+            <h2>Numerische Simulation</h2>
+            <div class="control-group">
+                <label for="magneticField">Magnetfeld B [T]:</label>
+                <input type="range" id="magneticField" min="0" max="100" value="0" step="0.1">
+                <input type="number" id="magneticFieldValue" min="0" max="100" value="0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label for="gridPoints">Gitterpunkte:</label>
+                <input type="number" id="gridPoints" min="50" max="200" value="75">
+            </div>
+            <div class="control-group">
+                <label for="stateSelect">Zustand auswählen:</label>
+                <select id="stateSelect">
+                    <option value="0">Grundzustand</option>
+                    <option value="1">1. angeregter Zustand</option>
+                    <option value="2">2. angeregter Zustand</option>
+                </select>
+            </div>
+            <button onclick="updateSimulation()">Simulation starten</button>
+            <div class="state-info">
+                <h3>Zustandsinformation</h3>
+                <p>Energie: <span id="energyValue">-</span> a.u.</p>
+                <p>Quantenzahlen:</p>
+                <ul>
+                    <li>n ≈ <span id="nValue">-</span></li>
+                    <li>l ≈ <span id="lValue">-</span></li>
+                    <li>m ≈ <span id="mValue">-</span></li>
+                </ul>
+            </div>
+        </div>
+        <div id="visualization">
+            <div id="loading">Berechne...</div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, mesh;
+        let isInitialized = false;
+
+        function initVisualization() {
+            if (isInitialized) return;
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+
+            const container = document.getElementById('visualization');
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            camera.position.z = 5;
+
+            // Beleuchtung
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 0.5);
+            pointLight.position.set(5, 5, 5);
+            scene.add(pointLight);
+
+            // Koordinatenachsen
+            const axesHelper = new THREE.AxesHelper(2);
+            scene.add(axesHelper);
+
+            isInitialized = true;
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mesh) mesh.rotation.y += 0.005;
+            renderer.render(scene, camera);
+        }
+
+        function updateSimulation() {
+            initVisualization();
+            document.getElementById('loading').style.display = 'block';
+
+            const B = parseFloat(document.getElementById('magneticFieldValue').value);
+            const gridPoints = parseInt(document.getElementById('gridPoints').value);
+            const selectedState = parseInt(document.getElementById('stateSelect').value);
+
+            fetch('/calculate_numerical', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    B: B,
+                    gridPoints: gridPoints,
+                    selectedState: selectedState
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateVisualization(data);
+                updateStateInfo(data);
+                document.getElementById('loading').style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('loading').style.display = 'none';
+            });
+        }
+
+        function updateVisualization(data) {
+            try {
+                if (mesh) scene.remove(mesh);
+
+                const geometry = new THREE.BufferGeometry();
+                const positions = [];
+                const colors = [];
+
+                // Überprüfe, ob data.state ein Array ist und eine gültige Länge hat
+                if (!Array.isArray(data.state) || data.state.length === 0) {
+                    console.error('Ungültige Zustandsdaten erhalten:', data.state);
+                    return;
+                }
+
+                const size = Math.sqrt(data.state.length);
+                if (!Number.isInteger(size)) {
+                    console.error('Zustandsdaten haben keine quadratische Größe');
+                    return;
+                }
+
+                // Finde den maximalen Absolutwert für die Normierung
+                const maxValue = Math.max(...data.state.map(Math.abs));
+
+                for (let i = 0; i < size; i++) {
+                    for (let j = 0; j < size; j++) {
+                        // Normalisiere den Wert
+                        const value = Math.abs(data.state[i * size + j]) / maxValue;
+
+                        if (value > 0.01) {  // Schwellwert
+                            positions.push(
+                                (i / size) * 4 - 2,
+                                value * 2,
+                                (j / size) * 4 - 2,
+                            );
+
+                            // Verbesserte Farbgebung
+                            const hue = (1 - value) * 240 / 360; // Blau zu Rot
+                            const color = new THREE.Color().setHSL(hue, 1, 0.5);
+                            colors.push(color.r, color.g, color.b);
+                        }
+                    }
+                }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true
+            });
+
+            mesh = new THREE.Points(geometry, material);
+            scene.add(mesh);
+        }
+        finally {}
+
+        function updateStateInfo(data) {
+            document.getElementById('energyValue').textContent = data.energy.toFixed(3);
+            document.getElementById('nValue').textContent = data.quantum_numbers.n;
+            document.getElementById('lValue').textContent = data.quantum_numbers.l;
+            document.getElementById('mValue').textContent = data.quantum_numbers.m;
+        }
+
+        // Synchronisiere Slider und Numbereingabe
+        document.getElementById('magneticField').addEventListener('input', function(e) {
+            document.getElementById('magneticFieldValue').value = e.target.value;
+        });
+
+        document.getElementById('magneticFieldValue').addEventListener('input', function(e) {
+            document.getElementById('magneticField').value = e.target.value;
+        });
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            if (!isInitialized) return;
+            const container = document.getElementById('visualization');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }, false);}
+    </script>
+</body>
+</html>

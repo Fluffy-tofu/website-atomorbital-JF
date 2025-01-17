@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wasserstoff-Orbital Visualisierung</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+            font-size: 14px;
+        }
+        input, select {
+            width: 100px;
+            padding: 4px;
+            margin-left: 5px;
+        }
+        button {
+            width: 100%;
+            padding: 8px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .slider {
+            width: 100px;
+            margin-left: 5px;
+        }
+        span {
+            margin-left: 10px;
+            font-size: 12px;
+        }
+        #loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+        #error-message {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="loading">Berechne Orbital...</div>
+    <div id="error-message"></div>
+    <div id="controls">
+        <div class="control-group">
+            <label for="n">Hauptquantenzahl n:</label>
+            <input type="number" id="n" min="1" max="5" value="1">
+        </div>
+        <div class="control-group">
+            <label for="l">Nebenquantenzahl l:</label>
+            <input type="number" id="l" min="0" value="0">
+        </div>
+        <div class="control-group">
+            <label for="m">Magnetquantenzahl m:</label>
+            <input type="number" id="m" value="0">
+        </div>
+        <div class="control-group">
+            <label for="points">Anzahl Punkte:</label>
+            <input type="number" id="points" min="1000" max="20000" value="40000">
+        </div>
+        <div class="control-group">
+            <label for="scatter">Streuung:</label>
+            <input type="range" id="scatter" min="0" max="100" value="100">
+        </div>
+        <div class="control-group">
+            <label for="perturbation">Störungstheorie:</label>
+            <select id="perturbation">
+                <option value="none">Keine Störung</option>
+                <option value="first">1. Ordnung</option>
+                <option value="second">2. Ordnung</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="field">Magnetfeld B [T]:</label>
+            <input type="number" id="field" min="0" max="10" step="0.1" value="0">
+        </div>
+        <div class="control-group">
+            <label for="threshold">Schwellwert:</label>
+            <input type="range" id="threshold" min="0" max="100" value="1" class="slider">
+            <span id="threshold-value">0.01</span>
+        </div>
+        <div class="control-group">
+            <label for="opacity">Transparenz:</label>
+            <input type="range" id="opacity" min="0" max="100" value="40" class="slider">
+            <span id="opacity-value">0.4</span>
+        </div>
+        <button onclick="updateOrbital()">Aktualisieren</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls, particles;
+
+        function init() {
+            console.log('Initialisiere 3D-Scene...');
+
+            // Event Listener für Slider
+            document.getElementById('threshold').addEventListener('input', function(e) {
+                document.getElementById('threshold-value').textContent = (e.target.value / 100).toFixed(2);
+            });
+
+            document.getElementById('opacity').addEventListener('input', function(e) {
+                document.getElementById('opacity-value').textContent = (e.target.value / 100).toFixed(2);
+            });
+
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 30;
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Controls setup
+            controls = new OrbitControls(camera, renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 0.5);
+            pointLight.position.set(20, 20, 20);
+            scene.add(pointLight);
+
+            // Koordinatenachsen
+            const axesHelper = new THREE.AxesHelper(10);
+            scene.add(axesHelper);
+
+            console.log('3D-Scene initialisiert');
+
+            // Initial orbital calculation
+            updateOrbital();
+
+            // Start animation loop
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        class OrbitControls {
+            constructor(camera, domElement) {
+                this.camera = camera;
+                this.domElement = domElement;
+                this.target = new THREE.Vector3();
+
+                this.rotateSpeed = 1.0;
+                this.zoomSpeed = 1.0;
+
+                this.minDistance = 5;
+                this.maxDistance = 50;
+
+                this.STATE = { NONE: -1, ROTATE: 0 };
+                this.state = this.STATE.NONE;
+
+                this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
+                this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
+                this.domElement.addEventListener('mouseup', this.onMouseUp.bind(this));
+                this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
+            }
+
+            onMouseDown(event) {
+                event.preventDefault();
+                this.state = this.STATE.ROTATE;
+                this.rotateStart = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            }
+
+            onMouseMove(event) {
+                if (this.state === this.STATE.ROTATE) {
+                    const deltaX = (event.clientX - this.rotateStart.x) * 0.01;
+                    const deltaY = (event.clientY - this.rotateStart.y) * 0.01;
+
+                    const rotationMatrixY = new THREE.Matrix4();
+                    rotationMatrixY.makeRotationY(-deltaX);
+
+                    const rotationMatrixX = new THREE.Matrix4();
+                    rotationMatrixX.makeRotationX(-deltaY);
+
+                    const position = new THREE.Vector3().copy(this.camera.position);
+                    position.applyMatrix4(rotationMatrixY);
+                    position.applyMatrix4(rotationMatrixX);
+
+                    this.camera.position.copy(position);
+                    this.camera.lookAt(this.target);
+
+                    this.rotateStart = {
+                        x: event.clientX,
+                        y: event.clientY
+                    };
+                }
+            }
+
+            onMouseUp() {
+                this.state = this.STATE.NONE;
+            }
+
+            onMouseWheel(event) {
+                event.preventDefault();
+
+                const delta = -Math.sign(event.deltaY);
+                const zoomScale = Math.pow(1.1, this.zoomSpeed * delta);
+
+                const currentDistance = this.camera.position.length();
+                const newDistance = currentDistance * zoomScale;
+
+                if (newDistance >= this.minDistance && newDistance <= this.maxDistance) {
+                    this.camera.position.multiplyScalar(zoomScale);
+                }
+            }
+
+            update() {
+                return true;
+            }
+        }
+
+        function updateOrbital() {
+            console.log('Starte Orbital-Update...');
+            showLoading(true);
+
+            const n = parseInt(document.getElementById('n').value);
+            const l = parseInt(document.getElementById('l').value);
+            const m = parseInt(document.getElementById('m').value);
+            const points = parseInt(document.getElementById('points').value);
+            const scatter = parseInt(document.getElementById('scatter').value);
+            const perturbation = document.getElementById('perturbation').value;
+            const field = parseFloat(document.getElementById('field').value);
+            const threshold = parseFloat(document.getElementById('threshold').value) / 100;
+            const opacity = parseFloat(document.getElementById('opacity').value) / 100;
+
+            // Validate quantum numbers
+            if (l >= n) {
+                showError('l muss kleiner als n sein');
+                showLoading(false);
+                return;
+            }
+            if (Math.abs(m) > l) {
+                showError('|m| muss kleiner oder gleich l sein');
+                showLoading(false);
+                return;
+            }
+
+            console.log(`Sende Anfrage mit n=${n}, l=${l}, m=${m}, points=${points}, scatter=${scatter}, perturbation=${perturbation}, field=${field}`);
+
+            fetch('/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    n, l, m,
+                    points,
+                    scatter,
+                    perturbation,
+                    field,
+                    threshold
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Antwort erhalten:', data);
+                console.log('Anzahl der Punkte:', data.points ? data.points.length : 0);
+                showLoading(false);
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                if (!data.points || data.points.length === 0) {
+                    showError('Keine Datenpunkte für die Visualisierung erhalten');
+                    return;
+                }
+
+                // Remove old particles
+                if (particles) {
+                    scene.remove(particles);
+                }
+
+                // Create new particles
+                const geometry = new THREE.BufferGeometry();
+                const positions = [];
+                const colors = [];
+
+                // Rotation matrix based on magnetic quantum number m
+                const rotationMatrix = new THREE.Matrix4();
+                if (m === 0) {
+                    // Für m=0: Orbital entlang der z-Achse
+                    rotationMatrix.makeRotationX(Math.PI / 2);
+                }
+                else if (m === -1) {
+                    // Für m=±1: Orbital horizontal ausrichten
+                    rotationMatrix.makeRotationX(Math.PI / 2);
+                }
+
+                data.points.forEach(point => {
+                    if (point.density >= threshold) {  // Nur Punkte über dem Schwellwert
+                        const position = new THREE.Vector3(point.x, point.y, point.z);
+                        position.applyMatrix4(rotationMatrix);
+                        positions.push(position.x, position.y, position.z);
+
+                        // Color based on density
+                        const intensity = point.density;
+                        colors.push(intensity, 0, 1 - intensity);
+                    }
+                });
+
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                const material = new THREE.PointsMaterial({
+                    size: 0.3,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: opacity,
+                    sizeAttenuation: true,
+                    alphaTest: 0.1
+                });
+
+                particles = new THREE.Points(geometry, material);
+                scene.add(particles);
+
+                console.log('Visualisierung aktualisiert');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showLoading(false);
+                showError('Fehler bei der Berechnung: ' + error.message);
+            });
+        }
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
