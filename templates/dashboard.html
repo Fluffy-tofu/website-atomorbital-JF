@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zeeman Effect Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        canvas {
+            width: 100% !important;
+            height: 300px !important;
+        }
+        .math {
+            font-family: "Times New Roman", serif;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Zeeman Effect Analysis Dashboard</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="n">Principal Quantum Number (n):</label>
+                <input type="number" id="n" min="1" max="5" value="1">
+            </div>
+            <div class="control-group">
+                <label for="l">Angular Momentum (l):</label>
+                <input type="number" id="l" min="0" value="0">
+            </div>
+            <div class="control-group">
+                <label for="m">Magnetic Quantum Number (m):</label>
+                <input type="number" id="m" value="0">
+            </div>
+            <div class="control-group">
+                <label for="B">Magnetic Field (T):</label>
+                <input type="number" id="B" min="0" max="10" step="0.1" value="0">
+            </div>
+            <button onclick="updateData()">Update</button>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card full-width">
+                <h2>Energy Level Splitting</h2>
+                <canvas id="energyChart"></canvas>
+            </div>
+
+            <div class="card">
+                <h2>Theory</h2>
+                <h3>Zeeman Effect Components:</h3>
+                <table>
+                    <tr>
+                        <th>Effect</th>
+                        <th>Energy Contribution</th>
+                    </tr>
+                    <tr>
+                        <td>Paramagnetic</td>
+                        <td class="math">ΔE = μₐB·m</td>
+                    </tr>
+                    <tr>
+                        <td>Diamagnetic</td>
+                        <td class="math">ΔE = (e²B²/8mₑ)⟨r²sin²θ⟩</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Research Data</h2>
+                <table id="resultTable">
+                    <tr>
+                        <th>B Field (T)</th>
+                        <th>Para. (eV)</th>
+                        <th>Dia. (eV)</th>
+                        <th>Total (eV)</th>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let energyChart = null;
+
+        function initChart() {
+            const ctx = document.getElementById('energyChart').getContext('2d');
+            energyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Paramagnetic',
+                            borderColor: 'rgb(75, 192, 192)',
+                            data: []
+                        },
+                        {
+                            label: 'Diamagnetic',
+                            borderColor: 'rgb(255, 99, 132)',
+                            data: []
+                        },
+                        {
+                            label: 'Total',
+                            borderColor: 'rgb(54, 162, 235)',
+                            data: []
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Magnetic Field (T)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Energy (eV)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateData() {
+            const n = parseInt(document.getElementById('n').value);
+            const l = parseInt(document.getElementById('l').value);
+            const m = parseInt(document.getElementById('m').value);
+            const B = parseFloat(document.getElementById('B').value);
+
+            fetch('/calculate_energy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ n, l, m, field: B })
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateChart(data);
+                updateTable(data);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function updateChart(data) {
+            const fields = Array.from({length: 21}, (_, i) => i * 0.5);
+            const paraData = fields.map(B => -B * document.getElementById('m').value * 5.788e-5);
+            const diaData = fields.map(B => B * B * 2.894e-6 * Math.pow(document.getElementById('n').value, 2));
+            const totalData = fields.map((_, i) => paraData[i] + diaData[i]);
+
+            energyChart.data.labels = fields;
+            energyChart.data.datasets[0].data = paraData;
+            energyChart.data.datasets[1].data = diaData;
+            energyChart.data.datasets[2].data = totalData;
+            energyChart.update();
+        }
+
+        function updateTable(data) {
+            const table = document.getElementById('resultTable');
+            // Clear existing rows except header
+            while (table.rows.length > 1) {
+                table.deleteRow(1);
+            }
+
+            // Add new data rows
+            const fields = [1, 2, 5, 10];
+            fields.forEach(B => {
+                const row = table.insertRow();
+                const para = -B * document.getElementById('m').value * 5.788e-5;
+                const dia = B * B * 2.894e-6 * Math.pow(document.getElementById('n').value, 2);
+                
+                row.insertCell().textContent = B.toFixed(1);
+                row.insertCell().textContent = para.toExponential(3);
+                row.insertCell().textContent = dia.toExponential(3);
+                row.insertCell().textContent = (para + dia).toExponential(3);
+            });
+        }
+
+        // Initialize chart on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            updateData();
+        });
+    </script>
+</body>
+</html>

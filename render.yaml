@@ -1,0 +1,19 @@
+# render.yaml
+services:
+  - type: web
+    name: zeeman-effect
+    env: python
+    plan: pro # 1GB RAM, 1 vCPU
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 4 --threads 2
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+    autoscaling:
+      enabled: true
+      minInstances: 1
+      maxInstances: 3
+      targetCPUUtilizationPercent: 75

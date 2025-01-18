@@ -4,9 +4,44 @@ from scipy.special import factorial, lpmv, genlaguerre
 from helper_functions import GeneralFunctions
 import math
 import json
+import multiprocessing
+import psutil
+from scipy.constants import e, hbar
 
 app = Flask(__name__)
 
+#hbar = 1.054571817e-34
+m_e = 9.1093837015e-31
+#e = 1.602176634e-19
+mu_B = 9.2740100783e-24
+a0 = 5.29177e-11
+
+# Optimize for numerical computations
+def configure_numpy():
+    import numpy as np
+    # Use multiple threads for numerical computations
+    np.show_config()
+    # Set number of threads based on available CPU cores
+    threads = multiprocessing.cpu_count()
+    return threads
+
+def monitor_resources():
+    cpu_percent = psutil.cpu_percent()
+    memory_info = psutil.Process().memory_info()
+    return {
+        'cpu_percent': cpu_percent,
+        'memory_used_mb': memory_info.rss / 1024 / 1024
+    }
+
+#@app.before_first_request
+def initialize():
+    global NUM_THREADS
+    NUM_THREADS = configure_numpy()
+    app.logger.info(f"Configured with {NUM_THREADS} threads")
+
+@app.route('/health')
+def health():
+    return monitor_resources()
 
 class Constants:
     """Physikalische Konstanten"""
@@ -181,7 +216,7 @@ def calculate():
         m = int(data['m'])
 
         num_points = int(data.get('points', 4000))
-        scatter = float(data.get('scatter', 10)) / 100.0
+        scatter = float(data.get('scatter', 10)) / 30.0
         perturbation = data.get('perturbation', 'none')
         B = float(data.get('field', 0))
         threshold = float(data.get('threshold', 0.01))
@@ -389,5 +424,60 @@ def calculate_numerical():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/dashboard')
+def dashboard():
+    return render_template('dashboard.html')
+
+
+@app.route('/calculate_energy', methods=['POST'])
+def calculate_energy():
+    try:
+        data = request.json
+        n = int(data['n'])
+        l = int(data['l'])
+        m = int(data['m'])
+        B = float(data['field'])
+
+        # Initialize GeneralFunctions
+        functions = GeneralFunctions(visual_dict={})
+
+        # Calculate paramagnetic contribution (linear with B)
+        para_contribution = -B * m * 5.788e-5  # μB * B * m in eV
+
+        # Calculate diamagnetic contribution (quadratic with B)
+        dia_contribution = B * B * 2.894e-6 * (n ** 2)  # (e²B²/8me)⟨r²⟩ in eV
+
+        # Total energy shift
+        total_energy = para_contribution + dia_contribution
+
+        # Generate energy data points for different field strengths
+        field_points = np.linspace(0, B, 50)
+        energy_data = []
+
+        for field in field_points:
+            para = -field * m * 5.788e-5
+            dia = field * field * 2.894e-6 * (n ** 2)
+            energy_data.append({
+                'field': float(field),
+                'para': float(para),
+                'dia': float(dia),
+                'total': float(para + dia)
+            })
+
+        return jsonify({
+            'energyData': energy_data,
+            'current': {
+                'paramagnetic': float(para_contribution),
+                'diamagnetic': float(dia_contribution),
+                'total': float(total_energy)
+            }
+        })
+
+    except Exception as e:
+        print(f"Error in calculate_energy: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
+    initialize()
     app.run()
