@@ -33,7 +33,7 @@ def monitor_resources():
         'memory_used_mb': memory_info.rss / 1024 / 1024
     }
 
-#@app.before_first_request
+@app.before_first_request
 def initialize():
     global NUM_THREADS
     NUM_THREADS = configure_numpy()
