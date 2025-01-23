@@ -4,6 +4,11 @@ from scipy.special import factorial, lpmv, genlaguerre
 from helper_functions import GeneralFunctions
 import math
 import json
+import os
+from datetime import datetime
+import json
+import numpy as np
+from pathlib import Path
 import multiprocessing
 import psutil
 from scipy.constants import e, hbar
@@ -393,36 +398,6 @@ def numerical_simulation():
     return render_template('numerical_simulation.html')
 
 
-@app.route('/calculate_numerical', methods=['POST'])
-def calculate_numerical():
-    try:
-        data = request.json
-        B = float(data['B'])
-        grid_points = int(data.get('gridPoints', 75))
-        selected_state = int(data.get('selectedState', 0))
-
-        # Berechne numerische Lösung
-        states = solve_numerically(B, grid_points)
-
-        # Wähle den gewünschten Zustand
-        if selected_state < len(states):
-            state = states[selected_state]
-
-            # Konvertiere numpy arrays und Datentypen zu Python-nativen Typen
-            response = {
-                'energy': float(state['energy']),
-                'state': state['state'].flatten().tolist(),
-                'quantum_numbers': convert_numpy_types(state['quantum_numbers'])
-            }
-
-            return jsonify(response)
-        else:
-            return jsonify({'error': 'Ausgewählter Zustand nicht verfügbar'}), 400
-
-    except Exception as e:
-        print(f"Fehler in calculate_numerical: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
 
 @app.route('/dashboard')
 def dashboard():
@@ -475,6 +450,165 @@ def calculate_energy():
 
     except Exception as e:
         print(f"Error in calculate_energy: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+NUMERICAL_DATA_DIR = 'numerical_data'
+TESLA_TO_AU = 4.25438e-6  # Umrechnungsfaktor Tesla zu atomaren Einheiten
+
+if not os.path.exists(NUMERICAL_DATA_DIR):
+    os.makedirs(NUMERICAL_DATA_DIR)
+
+
+def tesla_to_au(B_tesla):
+    """Wandelt Tesla in atomare Einheiten um"""
+    return B_tesla * TESLA_TO_AU
+
+
+def au_to_tesla(B_au):
+    """Wandelt atomare Einheiten in Tesla um"""
+    return B_au / TESLA_TO_AU
+
+
+def save_numerical_solution(B_tesla, states, metadata=None):
+    """
+    Speichert eine vorberechnete numerische Lösung.
+
+    Args:
+        B_tesla (float): Magnetfeldstärke in Tesla
+        states (list): Liste der Zustände mit Wellenfunktionen und Energien
+        metadata (dict, optional): Zusätzliche Metadaten zur Berechnung
+    """
+    filename = f"numerical_solution_B{B_tesla:.3f}T.json"
+    filepath = os.path.join(NUMERICAL_DATA_DIR, filename)
+
+    # Vorbereiten der Daten zum Speichern
+    data = {
+        'B_tesla': B_tesla,
+        'B_au': tesla_to_au(B_tesla),
+        'timestamp': str(datetime.datetime.now()),
+        'metadata': metadata or {},
+        'states': []
+    }
+
+    # Konvertiere die Zustände in ein speicherbares Format
+    for state in states:
+        saved_state = {
+            'energy': float(state['energy']),
+            'wavefunction': state['state'].tolist(),  # Numpy array zu Liste
+            'quantum_numbers': {
+                'n': int(state['quantum_numbers']['n']),
+                'l': int(state['quantum_numbers']['l']),
+                'm': int(state['quantum_numbers']['m'])
+            }
+        }
+        data['states'].append(saved_state)
+
+    # Speichern der Daten
+    with open(filepath, 'w') as f:
+        json.dump(data, f)
+
+    print(f"Numerische Lösung gespeichert in: {filepath}")
+
+
+def load_numerical_solution(B_tesla, tolerance=0.1):
+    """
+    Lädt eine vorberechnete numerische Lösung für ein gegebenes B-Feld.
+
+    Args:
+        B_tesla (float): Gewünschte Magnetfeldstärke in Tesla
+        tolerance (float): Toleranz bei der B-Feld-Suche in Tesla
+
+    Returns:
+        dict: Die geladene numerische Lösung oder None wenn keine passende gefunden
+    """
+    # Suche nach der am besten passenden Datei
+    best_match = None
+    smallest_diff = float('inf')
+
+    for file in Path(NUMERICAL_DATA_DIR).glob('numerical_solution_B*.json'):
+        # Extrahiere B-Feld aus Dateinamen
+        try:
+            file_B = float(file.stem.split('B')[1].replace('T', ''))
+            diff = abs(file_B - B_tesla)
+
+            if diff < smallest_diff and diff <= tolerance:
+                smallest_diff = diff
+                best_match = file
+        except:
+            continue
+
+    if best_match is None:
+        return None
+
+    # Lade die gefundene Lösung
+    with open(best_match, 'r') as f:
+        data = json.load(f)
+
+    # Konvertiere Listen zurück zu Numpy Arrays
+    for state in data['states']:
+        state['state'] = np.array(state['wavefunction'])
+        del state['wavefunction']  # Entferne redundante Daten
+
+    return data
+
+
+# Modifiziere die bestehende calculate_numerical Route
+@app.route('/calculate_numerical', methods=['POST'])
+def calculate_numerical():
+    try:
+        data = request.json
+        B_tesla = float(data['B'])
+        selected_state = int(data.get('selectedState', 0))
+
+        # Versuche zuerst, eine vorberechnete Lösung zu laden
+        numerical_data = load_numerical_solution(B_tesla)
+
+        if numerical_data is None:
+            # Wenn keine vorberechnete Lösung gefunden wurde,
+            # verwende die Echtzeit-Berechnung mit B-Feld in a.u.
+            states = solve_numerically(tesla_to_au(B_tesla))
+        else:
+            states = numerical_data['states']
+
+        # Wähle den gewünschten Zustand
+        if selected_state < len(states):
+            state = states[selected_state]
+
+            response = {
+                'energy': float(state['energy']),
+                'state': state['state'].flatten().tolist(),
+                'quantum_numbers': convert_numpy_types(state['quantum_numbers']),
+                'source': 'cached' if numerical_data else 'realtime',
+                'B_tesla': B_tesla,
+                'B_au': tesla_to_au(B_tesla)
+            }
+
+            return jsonify(response)
+        else:
+            return jsonify({'error': 'Ausgewählter Zustand nicht verfügbar'}), 400
+
+    except Exception as e:
+        print(f"Fehler in calculate_numerical: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/available_b_fields')
+def get_available_b_fields():
+    try:
+        available_fields = []
+        for file in Path(NUMERICAL_DATA_DIR).glob('numerical_solution_B*.json'):
+            try:
+                B_tesla = float(file.stem.split('B')[1].replace('T', ''))
+                available_fields.append(B_tesla)
+            except:
+                continue
+
+        return jsonify({
+            'fields': sorted(available_fields),
+            'states': 10  # Erhöhen Sie diese Zahl entsprechend Ihrer solve_numerically Funktion
+        })
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 

@@ -45,6 +45,13 @@
         button:hover {
             background: #45a049;
         }
+        .dashboard-button {
+            margin-top: 10px;
+            background: #2196F3 !important;
+        }
+        .dashboard-button:hover {
+            background: #1976D2 !important;
+        }
         .slider {
             width: 100px;
             margin-left: 5px;
@@ -126,6 +133,8 @@
             <span id="opacity-value">0.4</span>
         </div>
         <button onclick="updateOrbital()">Aktualisieren</button>
+        <button onclick="window.location.href='/dashboard'" class="dashboard-button">Zu Tabellenberechnung</button>
+        <button onclick="window.location.href='/numerical'" class="dashboard-button">Zu numerischer Berechnung</button>
     </div>
 
     <script>
@@ -432,7 +441,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }, false);
 
-        // Initialize the app
+        // Initialize the application
         init();
     </script>
 </body>
