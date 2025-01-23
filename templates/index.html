@@ -213,25 +213,45 @@
                 this.STATE = { NONE: -1, ROTATE: 0 };
                 this.state = this.STATE.NONE;
 
-                this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
-                this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
-                this.domElement.addEventListener('mouseup', this.onMouseUp.bind(this));
-                this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
+                // Mouse Events
+                this.domElement.addEventListener('mousedown', this.onPointerDown.bind(this));
+                this.domElement.addEventListener('mousemove', this.onPointerMove.bind(this));
+                this.domElement.addEventListener('mouseup', this.onPointerUp.bind(this));
+
+                // Touch Events
+                this.domElement.addEventListener('touchstart', this.onPointerDown.bind(this));
+                this.domElement.addEventListener('touchmove', this.onPointerMove.bind(this));
+                this.domElement.addEventListener('touchend', this.onPointerUp.bind(this));
+
+                // Zoom Events
+                this.domElement.addEventListener('wheel', this.onZoom.bind(this));
+                this.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
             }
 
-            onMouseDown(event) {
-                event.preventDefault();
-                this.state = this.STATE.ROTATE;
-                this.rotateStart = {
+            getPointerPosition(event) {
+                if (event.touches) {
+                    return {
+                        x: event.touches[0].clientX,
+                        y: event.touches[0].clientY
+                    };
+                }
+                return {
                     x: event.clientX,
                     y: event.clientY
                 };
             }
 
-            onMouseMove(event) {
+            onPointerDown(event) {
+                event.preventDefault();
+                this.state = this.STATE.ROTATE;
+                this.rotateStart = this.getPointerPosition(event);
+            }
+
+            onPointerMove(event) {
                 if (this.state === this.STATE.ROTATE) {
-                    const deltaX = (event.clientX - this.rotateStart.x) * 0.01;
-                    const deltaY = (event.clientY - this.rotateStart.y) * 0.01;
+                    const pointer = this.getPointerPosition(event);
+                    const deltaX = (pointer.x - this.rotateStart.x) * 0.01;
+                    const deltaY = (pointer.y - this.rotateStart.y) * 0.01;
 
                     const rotationMatrixY = new THREE.Matrix4();
                     rotationMatrixY.makeRotationY(-deltaX);
@@ -246,23 +266,32 @@
                     this.camera.position.copy(position);
                     this.camera.lookAt(this.target);
 
-                    this.rotateStart = {
-                        x: event.clientX,
-                        y: event.clientY
-                    };
+                    this.rotateStart = pointer;
                 }
             }
 
-            onMouseUp() {
+            onPointerUp() {
                 this.state = this.STATE.NONE;
             }
 
-            onMouseWheel(event) {
+            // Pinch-to-zoom
+            onTouchStart(event) {
+                if (event.touches.length === 2) {
+                    event.preventDefault();
+                    const dx = event.touches[0].clientX - event.touches[1].clientX;
+                    const dy = event.touches[0].clientY - event.touches[1].clientY;
+                    this.touchZoomDistanceStart = Math.sqrt(dx * dx + dy * dy);
+                }
+            }
+
+            onZoom(event) {
                 event.preventDefault();
-
                 const delta = -Math.sign(event.deltaY);
-                const zoomScale = Math.pow(1.1, this.zoomSpeed * delta);
+                this.zoom(delta);
+            }
 
+            zoom(delta) {
+                const zoomScale = Math.pow(1.1, this.zoomSpeed * delta);
                 const currentDistance = this.camera.position.length();
                 const newDistance = currentDistance * zoomScale;
 

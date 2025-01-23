@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Zeeman Effect Dashboard</title>
+    <title>Zeeman-Effekt Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
         body {
@@ -33,6 +33,7 @@
             display: flex;
             gap: 20px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         .control-group {
             display: flex;
@@ -60,65 +61,85 @@
             font-family: "Times New Roman", serif;
             font-style: italic;
         }
+        .error-message {
+            color: red;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Zeeman Effect Analysis Dashboard</h1>
-        
+        <h1>Zeeman-Effekt Analyse Dashboard</h1>
+
         <div class="controls">
             <div class="control-group">
-                <label for="n">Principal Quantum Number (n):</label>
+                <label for="n">Hauptquantenzahl (n):</label>
                 <input type="number" id="n" min="1" max="5" value="1">
             </div>
             <div class="control-group">
-                <label for="l">Angular Momentum (l):</label>
+                <label for="l">Bahndrehimpuls (l):</label>
                 <input type="number" id="l" min="0" value="0">
+                <div id="l-error" class="error-message"></div>
             </div>
             <div class="control-group">
-                <label for="m">Magnetic Quantum Number (m):</label>
+                <label for="m">Magnetquantenzahl (m):</label>
                 <input type="number" id="m" value="0">
+                <div id="m-error" class="error-message"></div>
             </div>
             <div class="control-group">
-                <label for="B">Magnetic Field (T):</label>
+                <label for="B">Magnetfeld (T):</label>
                 <input type="number" id="B" min="0" max="10" step="0.1" value="0">
             </div>
-            <button onclick="updateData()">Update</button>
+            <button onclick="updateData()">Aktualisieren</button>
         </div>
 
         <div class="dashboard-grid">
             <div class="card full-width">
-                <h2>Energy Level Splitting</h2>
+                <h2>Energieniveau-Aufspaltung</h2>
                 <canvas id="energyChart"></canvas>
             </div>
 
             <div class="card">
-                <h2>Theory</h2>
-                <h3>Zeeman Effect Components:</h3>
+                <h2>Theoretische Grundlagen</h2>
+                <h3>Zeeman-Effekt Komponenten:</h3>
                 <table>
                     <tr>
-                        <th>Effect</th>
-                        <th>Energy Contribution</th>
+                        <th>Effekt</th>
+                        <th>Energiebeitrag</th>
                     </tr>
                     <tr>
-                        <td>Paramagnetic</td>
+                        <td>Paramagnetisch (Zeeman-Effekt)</td>
                         <td class="math">ΔE = μₐB·m</td>
                     </tr>
                     <tr>
-                        <td>Diamagnetic</td>
-                        <td class="math">ΔE = (e²B²/8mₑ)⟨r²sin²θ⟩</td>
+                        <td>Diamagnetisch</td>
+                        <td class="math">ΔE = (e²B²/8mₑ)(x² + y²)</td>
                     </tr>
                 </table>
             </div>
 
             <div class="card">
-                <h2>Research Data</h2>
+                <h2>Berechnete Werte</h2>
                 <table id="resultTable">
                     <tr>
-                        <th>B Field (T)</th>
+                        <th>B-Feld (T)</th>
                         <th>Para. (eV)</th>
                         <th>Dia. (eV)</th>
-                        <th>Total (eV)</th>
+                        <th>Gesamt (eV)</th>
                     </tr>
                 </table>
             </div>
@@ -128,6 +149,32 @@
     <script>
         let energyChart = null;
 
+        function validateInputs() {
+            const n = parseInt(document.getElementById('n').value);
+            const l = parseInt(document.getElementById('l').value);
+            const m = parseInt(document.getElementById('m').value);
+
+            let isValid = true;
+
+            // Validiere l < n
+            if (l >= n) {
+                document.getElementById('l-error').textContent = 'l muss kleiner als n sein';
+                isValid = false;
+            } else {
+                document.getElementById('l-error').textContent = '';
+            }
+
+            // Validiere |m| ≤ l
+            if (Math.abs(m) > l) {
+                document.getElementById('m-error').textContent = '|m| muss kleiner oder gleich l sein';
+                isValid = false;
+            } else {
+                document.getElementById('m-error').textContent = '';
+            }
+
+            return isValid;
+        }
+
         function initChart() {
             const ctx = document.getElementById('energyChart').getContext('2d');
             energyChart = new Chart(ctx, {
@@ -136,17 +183,17 @@
                     labels: [],
                     datasets: [
                         {
-                            label: 'Paramagnetic',
+                            label: 'Paramagnetisch',
                             borderColor: 'rgb(75, 192, 192)',
                             data: []
                         },
                         {
-                            label: 'Diamagnetic',
+                            label: 'Diamagnetisch',
                             borderColor: 'rgb(255, 99, 132)',
                             data: []
                         },
                         {
-                            label: 'Total',
+                            label: 'Gesamt',
                             borderColor: 'rgb(54, 162, 235)',
                             data: []
                         }
@@ -158,13 +205,13 @@
                         x: {
                             title: {
                                 display: true,
-                                text: 'Magnetic Field (T)'
+                                text: 'Magnetfeld (T)'
                             }
                         },
                         y: {
                             title: {
                                 display: true,
-                                text: 'Energy (eV)'
+                                text: 'Energie (eV)'
                             }
                         }
                     }
@@ -173,6 +220,10 @@
         }
 
         function updateData() {
+            if (!validateInputs()) {
+                return;
+            }
+
             const n = parseInt(document.getElementById('n').value);
             const l = parseInt(document.getElementById('l').value);
             const m = parseInt(document.getElementById('m').value);
@@ -190,7 +241,7 @@
                 updateChart(data);
                 updateTable(data);
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => console.error('Fehler:', error));
         }
 
         function updateChart(data) {
@@ -208,18 +259,16 @@
 
         function updateTable(data) {
             const table = document.getElementById('resultTable');
-            // Clear existing rows except header
             while (table.rows.length > 1) {
                 table.deleteRow(1);
             }
 
-            // Add new data rows
             const fields = [1, 2, 5, 10];
             fields.forEach(B => {
                 const row = table.insertRow();
                 const para = -B * document.getElementById('m').value * 5.788e-5;
                 const dia = B * B * 2.894e-6 * Math.pow(document.getElementById('n').value, 2);
-                
+
                 row.insertCell().textContent = B.toFixed(1);
                 row.insertCell().textContent = para.toExponential(3);
                 row.insertCell().textContent = dia.toExponential(3);
