@@ -215,82 +215,42 @@ def calculate():
         print("\n=== Neue Berechnung ===")
         print(f"Erhaltene Daten: {data}")
 
-        data = request.json
         n = int(data['n'])
         l = int(data['l'])
         m = int(data['m'])
 
+        # Retrieve and enforce limits on the number of points
         num_points = int(data.get('points', 4000))
+        num_points = min(max(num_points, 1000), 80000)  # Clamp to [1000, 80000]
+
         scatter = float(data.get('scatter', 10)) / 30.0
         perturbation = data.get('perturbation', 'none')
         B = float(data.get('field', 0))
         threshold = float(data.get('threshold', 0.01))
 
-        if perturbation == 'numerical':
-            # Verwende numerische Lösung
-            states = solve_numerically(B)
-            points = []
+        if l >= n:
+            return jsonify({'error': 'l muss kleiner als n sein'}), 400
+        if abs(m) > l:
+            return jsonify({'error': '|m| muss kleiner oder gleich l sein'}), 400
 
-            # Konvertiere den ausgewählten Zustand in Punktwolke
-            for state in states:
-                psi = state['state']
-                qn = state['quantum_numbers']
+        points = calculate_probability_density(
+            n, l, m,
+            num_points=num_points,
+            scatter_factor=scatter,
+            perturbation=perturbation,
+            B=B
+        )
 
-                # Generiere Punktwolke basierend auf |ψ|²
-                prob = np.abs(psi) ** 2
-                prob = prob / np.max(prob)
+        # Filter points by threshold
+        filtered_points = [p for p in points if p['density'] >= threshold]
 
-                # Erstelle 3D-Punktwolke
-                x = []
-                y = []
-                z = []
-                densities = []
-
-                for i in range(len(psi)):
-                    for j in range(len(psi)):
-                        if prob[i, j] > 0.01:  # Schwellwert
-                            x.append(float(i))
-                            y.append(float(j))
-                            z.append(0.0)  # Für 2D-Darstellung
-                            densities.append(float(prob[i, j]))
-
-                points.append({
-                    'points': list(zip(x, y, z)),
-                    'densities': densities,
-                    'energy': state['energy'],
-                    'quantum_numbers': qn
-                })
-
-            return jsonify({
-                'numerical_states': points,
-                'method': 'numerical'
-            })
-
-        else:
-
-            # Validierung
-            if l >= n:
-                return jsonify({'error': 'l muss kleiner als n sein'}), 400
-            if abs(m) > l:
-                return jsonify({'error': '|m| muss kleiner oder gleich l sein'}), 400
-
-            points = calculate_probability_density(
-                n, l, m,
-                num_points=num_points,
-                scatter_factor=scatter,
-                perturbation=perturbation,
-                B=B
-            )
-
-            # Filtere Punkte nach Schwellwert
-            filtered_points = [p for p in points if p['density'] >= threshold]
-
-            print(f"Berechnung erfolgreich. Anzahl der Punkte: {len(filtered_points)} (von {len(points)})")
-            return jsonify({'points': filtered_points})
+        print(f"Berechnung erfolgreich. Anzahl der Punkte: {len(filtered_points)} (von {len(points)})")
+        return jsonify({'points': filtered_points})
 
     except Exception as e:
         print(f"Fehler in calculate: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 def V_total(x, y, B):
     """

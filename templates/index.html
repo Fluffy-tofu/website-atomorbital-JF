@@ -104,7 +104,7 @@
         </div>
         <div class="control-group">
             <label for="points">Anzahl Punkte:</label>
-            <input type="number" id="points" min="1000" max="20000" value="40000">
+            <input type="number" id="points" min="1000" max="80000" value="40000">
         </div>
         <div class="control-group">
             <label for="scatter">Streuung:</label>
@@ -439,6 +439,15 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }, false);
+
+        document.getElementById('points').addEventListener('change', function() {
+            let value = parseInt(this.value, 10);
+            if (value > 80000) {
+                this.value = 80000;
+            } else if (value < 1000) {
+                this.value = 1000;
+            }
+        });
 
         // Initialize the application
         init();
