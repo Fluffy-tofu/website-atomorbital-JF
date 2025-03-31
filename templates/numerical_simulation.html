@@ -49,7 +49,6 @@
             font-size: 14px;
         }
         .simulation-button {
-            position: absolute;
             width: 100%;
             padding: 12px;
             background: #4CAF50;
@@ -58,7 +57,7 @@
             border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
-            margin: 20px 0;
+            margin-bottom: 15px;
             transition: background-color 0.3s;
         }
         .simulation-button:hover {
@@ -237,6 +236,87 @@
             flex: 0 0 50px;
             text-align: right;
         }
+        .view-toggle {
+            display: flex;
+            margin-bottom: 20px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .view-toggle-btn {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background: #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            outline: none;
+            font-size: 14px;
+        }
+        .view-toggle-btn.active {
+            background: #4CAF50;
+            color: white;
+        }
+        #matrix-view {
+            display: none;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+        }
+        .spy-canvas {
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            background: #fff;
+            border-radius: 4px;
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .matrix-info {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .color-legend {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 4px;
+        }
+        .legend-gradient {
+            height: 20px;
+            width: 100%;
+            background: linear-gradient(to right, #00008B, #0000FF, #00FFFF, #00FF00, #FFFF00, #FF0000);
+            margin: 5px 0;
+            border-radius: 2px;
+        }
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #333;
+        }
+        .matrix-grid-size {
+            margin-top: 15px;
+        }
+        .grid-size-btn {
+            margin-right: 5px;
+            margin-bottom: 5px;
+            padding: 5px 10px;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .grid-size-btn.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #45a049;
+        }
         @media (max-width: 768px) {
             #controls {
                 width: 100%;
@@ -251,16 +331,25 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
 </head>
 <body>
     <div id="container">
         <button class="backButton" id="backButton" onclick="window.location.href='/'">← Zurück</button>
         <div id="visualization">
-            <div id="loading">Berechne...</div>
+            <!-- 3D visualization will go here -->
         </div>
+        <div id="matrix-view">
+            <canvas id="spyCanvas" class="spy-canvas"></canvas>
+        </div>
+        <div id="loading">Berechne...</div>
         <div id="controls">
             <h2>Numerische Simulation</h2>
+
+            <!-- View Toggle -->
+            <div class="view-toggle">
+                <button class="view-toggle-btn active" id="wavefunction-btn">Wellenfunktion</button>
+                <button class="view-toggle-btn" id="matrix-btn">Hamilton-Matrix</button>
+            </div>
 
             <!-- Magnetfeld Auswahl -->
             <div class="control-group">
@@ -268,16 +357,16 @@
                 <select id="magneticField" class="form-select"></select>
             </div>
 
-            <!-- Zustandsauswahl -->
-            <div class="control-group">
+            <!-- Zustandsauswahl - nur für Wellenfunktion -->
+            <div class="control-group wavefunction-control">
                 <label>Zustand auswählen:</label>
                 <div id="stateSelect" class="state-select">
                     <!-- Will be dynamically filled -->
                 </div>
             </div>
 
-            <!-- Visualisierungseinstellungen -->
-            <div class="control-group viz-controls">
+            <!-- Visualisierungseinstellungen - nur für Wellenfunktion -->
+            <div class="control-group wavefunction-control viz-controls">
                 <h3>Visualisierungseinstellungen</h3>
                 <div class="slider-group">
                     <label for="pointSize">Punktgröße:</label>
@@ -296,8 +385,41 @@
                 </div>
             </div>
 
-            <!-- Zustandsinformation -->
-            <div class="state-info">
+            <!-- Matrix visualization controls - nur für Matrix -->
+            <div class="control-group matrix-control" style="display:none">
+                <h3>Matrix Visualisierung</h3>
+                <div class="matrix-grid-size">
+                    <label>Gridgröße für schnellere Berechnung:</label>
+                    <div>
+                        <button class="grid-size-btn" data-size="50">50×50</button>
+                        <button class="grid-size-btn active" data-size="75">75×75</button>
+                        <button class="grid-size-btn" data-size="100">100×100</button>
+                    </div>
+                    <p class="size-info">Größere Grids sind genauer, aber langsamer zu berechnen.</p>
+                </div>
+
+                <div class="matrix-info">
+                    <h3>Matrix Information</h3>
+                    <p>Dimension: <span id="matrixDimension">-</span></p>
+                    <p>Nicht-Null Elemente: <span id="nonZeroElements">-</span></p>
+                    <p>Quelle: <span id="dataSource">-</span></p>
+                    <p>Besetzung: <span id="matrixOccupancy">-</span>%</p>
+                </div>
+
+                <div class="color-legend">
+                    <h3>Farbskala (Elementwerte)</h3>
+                    <div class="legend-gradient"></div>
+                    <div class="legend-labels">
+                        <span>Min</span>
+                        <span>Max</span>
+                    </div>
+                    <p>Min: <span id="minValue">-</span></p>
+                    <p>Max: <span id="maxValue">-</span></p>
+                </div>
+            </div>
+
+            <!-- Zustandsinformation - nur für Wellenfunktion -->
+            <div class="state-info wavefunction-control">
                 <h3>Zustandsinformation</h3>
                 <p>Energie: <span id="energyValue">-</span> a.u.</p>
                 <div class="magnetic-field-info" id="magneticFieldInfo"></div>
@@ -309,25 +431,52 @@
     </div>
 
     <script>
+        // ----- WAVEFUNCTION VISUALIZATION -----
         let scene, camera, renderer, mesh, controls;
         let isInitialized = false;
         let availableStates = 8;
-        let gui;
         let visualParams = {
-            pointSize: 0.08,  // Erhöhte Standardpunktgröße
-            opacity: 0.9,    // Erhöhte Standardtransparenz
-            threshold: 0.001  // Reduzierter Schwellenwert für mehr sichtbare Punkte
+            pointSize: 0.08,
+            opacity: 0.9,
+            threshold: 0.001
         };
 
-                    // Update initial slider values
-            function updateSliderDisplays() {
-                document.getElementById('pointSize-value').textContent = visualParams.pointSize.toFixed(2);
-                document.getElementById('opacity-value').textContent = visualParams.opacity.toFixed(1);
-                document.getElementById('threshold-value').textContent = visualParams.threshold.toFixed(3);
-            }
+        // ----- MATRIX VISUALIZATION -----
+        let spyCanvas = document.getElementById('spyCanvas');
+        let ctx = spyCanvas.getContext('2d');
+        let matrixData = null;
+        let gridSize = 75; // Default grid size
 
-            window.addEventListener('load', function() {
-                updateSliderDisplays();
+        // ----- SHARED STATE -----
+        let currentView = 'wavefunction'; // 'wavefunction' or 'matrix'
+
+        // Update initial slider values
+        function updateSliderDisplays() {
+            document.getElementById('pointSize-value').textContent = visualParams.pointSize.toFixed(2);
+            document.getElementById('opacity-value').textContent = visualParams.opacity.toFixed(1);
+            document.getElementById('threshold-value').textContent = visualParams.threshold.toFixed(3);
+        }
+
+        window.addEventListener('load', function() {
+            updateSliderDisplays();
+
+            // Set up view toggle
+            document.getElementById('wavefunction-btn').addEventListener('click', () => setView('wavefunction'));
+            document.getElementById('matrix-btn').addEventListener('click', () => setView('matrix'));
+
+            // Set up grid size buttons
+            document.querySelectorAll('.grid-size-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.grid-size-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    gridSize = parseInt(this.getAttribute('data-size'));
+                    if (currentView === 'matrix') {
+                        updateMatrixVisualization();
+                    }
+                });
+            });
+
+            // Load available magnetic fields
             fetch('/available_b_fields')
                 .then(response => response.json())
                 .then(data => {
@@ -348,6 +497,35 @@
                     showError('Fehler beim Laden der Magnetfelder');
                 });
         });
+
+        function setView(view) {
+            currentView = view;
+
+            // Update UI
+            if (view === 'wavefunction') {
+                document.getElementById('wavefunction-btn').classList.add('active');
+                document.getElementById('matrix-btn').classList.remove('active');
+                document.getElementById('visualization').style.display = 'block';
+                document.getElementById('matrix-view').style.display = 'none';
+                document.querySelectorAll('.wavefunction-control').forEach(el => el.style.display = 'block');
+                document.querySelectorAll('.matrix-control').forEach(el => el.style.display = 'none');
+
+                // Ensure the 3D visualization is initialized
+                if (!isInitialized) {
+                    initVisualization();
+                }
+                updateSimulation();
+            } else {
+                document.getElementById('wavefunction-btn').classList.remove('active');
+                document.getElementById('matrix-btn').classList.add('active');
+                document.getElementById('visualization').style.display = 'none';
+                document.getElementById('matrix-view').style.display = 'flex';
+                document.querySelectorAll('.wavefunction-control').forEach(el => el.style.display = 'none');
+                document.querySelectorAll('.matrix-control').forEach(el => el.style.display = 'block');
+
+                updateMatrixVisualization();
+            }
+        }
 
         function updateStateCards() {
             const container = document.getElementById('stateSelect');
@@ -448,64 +626,16 @@
             animate();
         }
 
-        // Entferne die separate GUI und füge die Kontrollen zum Hauptbereich hinzu
-        function addVisualizationControls() {
-            const controlsDiv = document.getElementById('controls');
-
-            // Füge eine neue Control-Group für die Visualisierungsparameter hinzu
-            const visualGroup = document.createElement('div');
-            visualGroup.className = 'control-group';
-            visualGroup.innerHTML = `
-                <h3>Visualisierungseinstellungen</h3>
-                <div class="control-group">
-                    <label for="pointSize">Punktgröße:</label>
-                    <input type="range" id="pointSize" class="slider" min="0.01" max="0.2" step="0.01" value="${visualParams.pointSize}">
-                    <span class="slider-value" id="pointSize-value">${visualParams.pointSize}</span>
-                </div>
-                <div class="control-group">
-                    <label for="opacity">Transparenz:</label>
-                    <input type="range" id="opacity" class="slider" min="0" max="1" step="0.1" value="${visualParams.opacity}">
-                    <span class="slider-value" id="opacity-value">${visualParams.opacity}</span>
-                </div>
-                <div class="control-group">
-                    <label for="threshold">Schwellenwert:</label>
-                    <input type="range" id="threshold" class="slider" min="0" max="0.1" step="0.001" value="${visualParams.threshold}">
-                    <span class="slider-value" id="threshold-value">${visualParams.threshold}</span>
-                </div>
-            `;
-
-            controlsDiv.insertBefore(visualGroup, document.querySelector('.state-info'));
-
-            // Event Listener für die Slider
-            document.getElementById('pointSize').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                document.getElementById('pointSize-value').textContent = value.toFixed(2);
-                visualParams.pointSize = value;
-                if (mesh) mesh.material.size = value;
-            });
-
-            document.getElementById('opacity').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                document.getElementById('opacity-value').textContent = value.toFixed(1);
-                visualParams.opacity = value;
-                if (mesh) mesh.material.opacity = value;
-            });
-
-            document.getElementById('threshold').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                document.getElementById('threshold-value').textContent = value.toFixed(3);
-                visualParams.threshold = value;
-                updateSimulation();
-            });
-        }
-
         function animate() {
+            if (!isInitialized) return;
             requestAnimationFrame(animate);
             if (controls) controls.update();
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) renderer.render(scene, camera);
         }
 
         function updateSimulation() {
+            if (currentView !== 'wavefunction') return;
+
             initVisualization();
             document.getElementById('loading').style.display = 'block';
 
@@ -609,15 +739,194 @@
             sourceInfo.textContent = `Quelle: ${data.source === 'cached' ? 'Vorberechnet' : 'Echtzeit-Berechnung'}`;
         }
 
+        // ----- MATRIX VISUALIZATION FUNCTIONS -----
+
+        function updateMatrixVisualization() {
+            if (currentView !== 'matrix') return;
+
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            const B = parseFloat(document.getElementById('magneticField').value);
+
+            fetch('/get_hamilton_matrix', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    B: B,
+                    gridSize: gridSize
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                matrixData = data;
+                drawSpyMatrix(data);
+                updateMatrixInfo(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showError('Fehler beim Abrufen der Hamilton-Matrix');
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+        }
+
+        function getColorForValue(value, minVal, maxVal) {
+            // Normalize value to 0-1 range
+            const normalizedValue = (value - minVal) / (maxVal - minVal);
+
+            // Color gradient from blue to red through cyan, green, yellow
+            let r, g, b;
+
+            if (normalizedValue < 0.25) {
+                // Blue to Cyan
+                r = 0;
+                g = Math.floor(255 * (normalizedValue * 4));
+                b = 255;
+            } else if (normalizedValue < 0.5) {
+                // Cyan to Green
+                r = 0;
+                g = 255;
+                b = Math.floor(255 * (1 - (normalizedValue - 0.25) * 4));
+            } else if (normalizedValue < 0.75) {
+                // Green to Yellow
+                r = Math.floor(255 * ((normalizedValue - 0.5) * 4));
+                g = 255;
+                b = 0;
+            } else {
+                // Yellow to Red
+                r = 255;
+                g = Math.floor(255 * (1 - (normalizedValue - 0.75) * 4));
+                b = 0;
+            }
+
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function drawSpyMatrix(data) {
+            const container = document.getElementById('matrix-view');
+            const size = Math.min(container.clientWidth, container.clientHeight) - 80;
+
+            spyCanvas.width = size;
+            spyCanvas.height = size;
+
+            ctx.clearRect(0, 0, spyCanvas.width, spyCanvas.height);
+
+            const rows = data.rows;
+            const cols = data.cols;
+            const values = data.values;
+            const [n, m] = data.shape;
+
+            // Find min and max values for color scaling
+            const minVal = Math.min(...values);
+            const maxVal = Math.max(...values);
+
+            // Update color legend
+            document.getElementById('minValue').textContent = minVal.toFixed(4);
+            document.getElementById('maxValue').textContent = maxVal.toFixed(4);
+
+            // Draw background
+            ctx.fillStyle = '#f8f8f8';
+            ctx.fillRect(0, 0, size, size);
+
+            // Size of each matrix element on canvas
+            const pixelWidth = size / m;
+            const pixelHeight = size / n;
+
+            // Draw non-zero elements
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const col = cols[i];
+                const value = values[i];
+
+                const x = col * pixelWidth;
+                const y = row * pixelHeight;
+
+                // Use color based on value
+                ctx.fillStyle = getColorForValue(value, minVal, maxVal);
+                ctx.fillRect(x, y, pixelWidth, pixelHeight);
+            }
+
+            // Draw grid lines (for smaller matrices only)
+            if (n <= 50) {
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.lineWidth = 0.5;
+
+                // Vertical lines
+                for (let i = 0; i <= m; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * pixelWidth, 0);
+                    ctx.lineTo(i * pixelWidth, size);
+                    ctx.stroke();
+                }
+
+                // Horizontal lines
+                for (let i = 0; i <= n; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * pixelHeight);
+                    ctx.lineTo(size, i * pixelHeight);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw border
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, size, size);
+
+            // Add description text
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Hamilton-Matrix (${n}×${n})`, 10, 20);
+
+            // Draw diagonal enhancement
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(size, size);
+            ctx.stroke();
+        }
+
+        function updateMatrixInfo(data) {
+            document.getElementById('matrixDimension').textContent = `${data.shape[0]} × ${data.shape[1]}`;
+            document.getElementById('nonZeroElements').textContent = data.rows.length;
+            document.getElementById('dataSource').textContent = data.source === 'cached' ? 'Vorberechnet' : 'Echtzeit-Berechnung';
+
+            // Calculate occupancy percentage
+            const totalElements = data.shape[0] * data.shape[1];
+            const occupancy = (data.rows.length / totalElements * 100).toFixed(4);
+            document.getElementById('matrixOccupancy').textContent = occupancy;
+        }
+
         window.addEventListener('resize', () => {
             if (!isInitialized) return;
-            const container = document.getElementById('visualization');
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
+
+            if (currentView === 'wavefunction') {
+                const container = document.getElementById('visualization');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            } else if (currentView === 'matrix' && matrixData) {
+                drawSpyMatrix(matrixData);
+            }
         }, false);
 
-        document.getElementById('magneticField').addEventListener('change', updateSimulation);
+        document.getElementById('magneticField').addEventListener('change', function() {
+            if (currentView === 'wavefunction') {
+                updateSimulation();
+            } else {
+                updateMatrixVisualization();
+            }
+        });
     </script>
 </body>
 </html>

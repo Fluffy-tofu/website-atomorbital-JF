@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Eigenvalue Problem</title>
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Cambria Math', 'Cambria', 'STIX', 'STIX Two Math', serif;
+        }
+
+        .equation-container {
+            background-color: black;
+            padding: 20px;
+            display: inline-block;
+        }
+
+        .equation {
+            font-size: 8rem;
+            text-align: center;
+            font-style: italic;
+            letter-spacing: -0.02em;
+        }
+
+        a {
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+            position: relative;
+        }
+
+        .h-op {
+            font-style: normal;
+            font-weight: normal;
+            font-size: 0.95em;
+        }
+
+        .equals {
+            margin: 0 0.1em;
+            font-style: normal;
+        }
+
+        .e-val {
+            font-style: normal;
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 1.4rem;
+            font-family: Arial, sans-serif;
+            font-style: normal;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 100;
+            letter-spacing: 0.03em;
+        }
+
+        .tooltip-top {
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 10px;
+        }
+
+        .tooltip-bottom {
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 10px;
+        }
+
+        a:hover .tooltip {
+            opacity: 1;
+        }
+
+        a:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="equation-container">
+        <div class="equation">
+            <a href="https://en.wikipedia.org/wiki/Hamiltonian_(quantum_mechanics)" class="h-op">
+                H
+                <span class="tooltip tooltip-top">Hamilton-Operator</span>
+            </a>
+            <a href="/numerical">
+                ψ
+                <span class="tooltip tooltip-top">Wellenfunktion</span>
+            </a>
+            <span class="equals">=</span>
+            <a href="https://en.wikipedia.org/wiki/Energy_level" class="e-val">
+                E
+                <span class="tooltip tooltip-bottom">Energieeigenwert</span>
+            </a>
+            <a href="/numerical">
+                ψ
+                <span class="tooltip tooltip-bottom">Eigenvektor</span>
+            </a>
+        </div>
+    </div>
+</body>
+</html>

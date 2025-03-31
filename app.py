@@ -1,25 +1,29 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 import numpy as np
 from scipy.special import factorial, lpmv, genlaguerre
 from helper_functions import GeneralFunctions
 import math
 import json
 import os
+import matplotlib.pyplot as plt
 from datetime import datetime
-import json
 import numpy as np
+from io import BytesIO
+import base64
 from pathlib import Path
 import multiprocessing
 import psutil
 from scipy.constants import e, hbar
+from numerical_solver import load_hamilton_matrix, save_hamilton_matrix, tesla_to_au, V_total, load_numerical_solution
 
 app = Flask(__name__)
 
-#hbar = 1.054571817e-34
+# hbar = 1.054571817e-34
 m_e = 9.1093837015e-31
-#e = 1.602176634e-19
+# e = 1.602176634e-19
 mu_B = 9.2740100783e-24
 a0 = 5.29177e-11
+
 
 # Optimize for numerical computations
 def configure_numpy():
@@ -30,6 +34,7 @@ def configure_numpy():
     threads = multiprocessing.cpu_count()
     return threads
 
+
 def monitor_resources():
     cpu_percent = psutil.cpu_percent()
     memory_info = psutil.Process().memory_info()
@@ -38,15 +43,18 @@ def monitor_resources():
         'memory_used_mb': memory_info.rss / 1024 / 1024
     }
 
-#@app.before_first_request
+
+# @app.before_first_request
 def initialize():
     global NUM_THREADS
     NUM_THREADS = configure_numpy()
     app.logger.info(f"Configured with {NUM_THREADS} threads")
 
+
 @app.route('/health')
 def health():
     return monitor_resources()
+
 
 class Constants:
     """Physikalische Konstanten"""
@@ -252,88 +260,6 @@ def calculate():
         return jsonify({'error': str(e)}), 500
 
 
-def V_total(x, y, B):
-    """
-    Total potential including:
-    - Coulomb potential
-    - Paramagnetic term (∝ B)
-    - Diamagnetic term (∝ B²)
-    """
-    r = np.sqrt(x ** 2 + y ** 2)
-
-    # Coulomb potential with soft core to avoid singularity
-    V_coulomb = -1 / np.sqrt(r ** 2 + 0.1)
-
-    # Magnetic terms
-    # Lz term (paramagnetic) - scaled with B
-    V_para = 0.5 * B * (x * y - y * x)
-
-    # Diamagnetic term - scaled with B
-    V_dia = (B ** 2 / 8) * (x ** 2 + y ** 2)
-
-    return V_coulomb + V_para + V_dia
-
-def solve_numerically(B, num_states=5):
-    """Numerische Lösung der Schrödinger-Gleichung"""
-    # Problem parameters
-    n = 75  # grid points
-    a = max(20, 40 / np.sqrt(1 + B))  # adaptive box size
-    d = a / n  # step size
-
-    # Create grid
-    x = np.linspace(-a / 2, a / 2, n)
-    y = np.linspace(-a / 2, a / 2, n)
-    X, Y = np.meshgrid(x, y)
-
-    # Create Hamiltonian
-    N = (n - 2) ** 2
-    H = np.zeros((N, N))
-
-    # Build Hamiltonian
-    for i in range(n - 2):
-        for j in range(n - 2):
-            idx = i * (n - 2) + j
-            xi = x[i + 1]
-            yi = y[j + 1]
-
-            # Diagonal term
-            H[idx, idx] = 4 + d ** 2 * V_total(xi, yi, B)
-
-            # Off-diagonal terms
-            if j < n - 3: H[idx, idx + 1] = -1
-            if j > 0: H[idx, idx - 1] = -1
-            if i < n - 3: H[idx, idx + (n - 2)] = -1
-            if i > 0: H[idx, idx - (n - 2)] = -1
-
-    # Solve eigenvalue problem
-    eigenvalues, eigenvectors = np.linalg.eigh(H)
-
-    # Process results
-    results = []
-    for i in range(min(num_states, len(eigenvalues))):
-        # Reshape eigenstate
-        psi = eigenvectors[:, i].reshape((n - 2, n - 2))
-
-        # Calculate quantum numbers (approximate)
-        nodes_x = np.sum(np.diff(np.signbit(psi), axis=0) != 0)
-        nodes_y = np.sum(np.diff(np.signbit(psi), axis=1) != 0)
-        n_approx = max(nodes_x, nodes_y) + 1
-        l_approx = abs(nodes_x - nodes_y)
-        m_approx = int(np.round(np.angle(np.mean(psi)) / np.pi))
-
-        results.append({
-            'energy': float(eigenvalues[i] / (2 * d * d)),
-            'state': psi,
-            'quantum_numbers': {
-                'n': n_approx,
-                'l': l_approx,
-                'm': m_approx
-            }
-        })
-
-    return results
-
-
 # Diese Hilfsfunktion am Anfang der app.py hinzufügen
 def convert_numpy_types(obj):
     """Konvertiert NumPy-Datentypen in Python-native Typen"""
@@ -348,20 +274,18 @@ def convert_numpy_types(obj):
     return obj
 
 
-
-
-
-# Füge diese neue Route zur app.py hinzu
-
 @app.route('/numerical')
 def numerical_simulation():
     return render_template('numerical_simulation.html')
 
 
-
 @app.route('/dashboard')
 def dashboard():
     return render_template('dashboard.html')
+
+@app.route('/equation')
+def equation():
+    return render_template('matrix_eigenwert.html')
 
 
 @app.route('/calculate_energy', methods=['POST'])
@@ -420,100 +344,89 @@ if not os.path.exists(NUMERICAL_DATA_DIR):
     os.makedirs(NUMERICAL_DATA_DIR)
 
 
-def tesla_to_au(B_tesla):
-    """Wandelt Tesla in atomare Einheiten um"""
-    return B_tesla * TESLA_TO_AU
+@app.route('/hamilton_matrix')
+def hamilton_matrix_visualization():
+    """Serves the HTML page for Hamilton matrix visualization"""
+    return render_template('hamilton_matrix.html')
 
 
-def au_to_tesla(B_au):
-    """Wandelt atomare Einheiten in Tesla um"""
-    return B_au / TESLA_TO_AU
+@app.route('/get_hamilton_matrix', methods=['POST'])
+def get_hamilton_matrix():
+    """API endpoint to get Hamilton matrix data for visualization"""
+    try:
+        data = request.json
+        B_tesla = float(data['B'])
+        grid_size = int(data.get('gridSize', 75))  # Default to 75 if not specified
 
+        # Try to load a pre-calculated Hamilton matrix
+        matrix_data = load_hamilton_matrix(B_tesla)
 
-def save_numerical_solution(B_tesla, states, metadata=None):
-    """
-    Speichert eine vorberechnete numerische Lösung.
+        if matrix_data is None:
+            # If no pre-calculated matrix found, calculate in real-time
+            B_au = tesla_to_au(B_tesla)
+            # We need to recreate the matrix here instead of calling solve_numerically
+            # to avoid redundant eigenvalue calculation
+            n = grid_size  # grid points
+            a = max(20, 40 / np.sqrt(1 + abs(B_au)))  # adaptive box size
+            d = a / n  # step size
 
-    Args:
-        B_tesla (float): Magnetfeldstärke in Tesla
-        states (list): Liste der Zustände mit Wellenfunktionen und Energien
-        metadata (dict, optional): Zusätzliche Metadaten zur Berechnung
-    """
-    filename = f"numerical_solution_B{B_tesla:.3f}T.json"
-    filepath = os.path.join(NUMERICAL_DATA_DIR, filename)
+            x = np.linspace(-a / 2, a / 2, n)
+            y = np.linspace(-a / 2, a / 2, n)
 
-    # Vorbereiten der Daten zum Speichern
-    data = {
-        'B_tesla': B_tesla,
-        'B_au': tesla_to_au(B_tesla),
-        'timestamp': str(datetime.datetime.now()),
-        'metadata': metadata or {},
-        'states': []
-    }
+            N = (n - 2) ** 2
+            H = np.zeros((N, N))
 
-    # Konvertiere die Zustände in ein speicherbares Format
-    for state in states:
-        saved_state = {
-            'energy': float(state['energy']),
-            'wavefunction': state['state'].tolist(),  # Numpy array zu Liste
-            'quantum_numbers': {
-                'n': int(state['quantum_numbers']['n']),
-                'l': int(state['quantum_numbers']['l']),
-                'm': int(state['quantum_numbers']['m'])
+            for i in range(n - 2):
+                for j in range(n - 2):
+                    idx = i * (n - 2) + j
+                    xi = x[i + 1]
+                    yi = y[j + 1]
+
+                    # Diagonal term
+                    H[idx, idx] = 4 + d ** 2 * V_total(xi, yi, B_au)
+
+                    # Off-diagonal terms
+                    if j < n - 3: H[idx, idx + 1] = -1
+                    if j > 0: H[idx, idx - 1] = -1
+                    if i < n - 3: H[idx, idx + (n - 2)] = -1
+                    if i > 0: H[idx, idx - (n - 2)] = -1
+
+            matrix_data = {
+                'H': H,
+                'B_tesla': B_tesla,
+                'B_au': B_au,
+                'metadata': {'grid_size': n, 'box_size': a}
             }
+
+            # Save for future use
+            save_hamilton_matrix(B_tesla, H, metadata=matrix_data['metadata'])
+
+        # Convert to a sparse representation for efficient transmission
+        H = matrix_data['H']
+        non_zero_idxs = np.abs(H) > 1e-6  # threshold for "non-zero"
+        rows, cols = np.where(non_zero_idxs)
+        values = H[non_zero_idxs]
+
+        # Convert all NumPy types to Python native types for JSON serialization
+        response = {
+            'rows': rows.tolist(),
+            'cols': cols.tolist(),
+            'values': values.tolist(),
+            'shape': [int(dim) for dim in H.shape],
+            'B_tesla': float(matrix_data['B_tesla']),
+            'source': 'cached' if 'timestamp' in matrix_data else 'realtime',
+            'metadata': matrix_data.get('metadata', {})
         }
-        data['states'].append(saved_state)
 
-    # Speichern der Daten
-    with open(filepath, 'w') as f:
-        json.dump(data, f)
+        return jsonify(response)
 
-    print(f"Numerische Lösung gespeichert in: {filepath}")
-
-
-def load_numerical_solution(B_tesla, tolerance=0.1):
-    """
-    Lädt eine vorberechnete numerische Lösung für ein gegebenes B-Feld.
-
-    Args:
-        B_tesla (float): Gewünschte Magnetfeldstärke in Tesla
-        tolerance (float): Toleranz bei der B-Feld-Suche in Tesla
-
-    Returns:
-        dict: Die geladene numerische Lösung oder None wenn keine passende gefunden
-    """
-    # Suche nach der am besten passenden Datei
-    best_match = None
-    smallest_diff = float('inf')
-
-    for file in Path(NUMERICAL_DATA_DIR).glob('numerical_solution_B*.json'):
-        # Extrahiere B-Feld aus Dateinamen
-        try:
-            file_B = float(file.stem.split('B')[1].replace('T', ''))
-            diff = abs(file_B - B_tesla)
-
-            if diff < smallest_diff and diff <= tolerance:
-                smallest_diff = diff
-                best_match = file
-        except:
-            continue
-
-    if best_match is None:
-        return None
-
-    # Lade die gefundene Lösung
-    with open(best_match, 'r') as f:
-        data = json.load(f)
-
-    # Konvertiere Listen zurück zu Numpy Arrays
-    for state in data['states']:
-        state['state'] = np.array(state['wavefunction'])
-        del state['wavefunction']  # Entferne redundante Daten
-
-    return data
+    except Exception as e:
+        print(f"Fehler in get_hamilton_matrix: {str(e)}")
+        import traceback
+        traceback.print_exc()  # This will print the full traceback
+        return jsonify({'error': str(e)}), 500
 
 
-# Modifiziere die bestehende calculate_numerical Route
 @app.route('/calculate_numerical', methods=['POST'])
 def calculate_numerical():
     try:
@@ -527,6 +440,9 @@ def calculate_numerical():
         if numerical_data is None:
             # Wenn keine vorberechnete Lösung gefunden wurde,
             # verwende die Echtzeit-Berechnung mit B-Feld in a.u.
+            # We would call solve_numerically here from numerical_solver,
+            # but for simplicity in this integrated example, let's assume it exists
+            from numerical_solver import solve_numerically
             states = solve_numerically(tesla_to_au(B_tesla))
         else:
             states = numerical_data['states']
@@ -564,14 +480,105 @@ def get_available_b_fields():
             except:
                 continue
 
+        # Also include Hamilton matrix files
+        for file in Path(NUMERICAL_DATA_DIR).glob('hamilton_matrix_B*.npz'):
+            try:
+                B_tesla = float(file.stem.split('B')[1].replace('T', ''))
+                if B_tesla not in available_fields:
+                    available_fields.append(B_tesla)
+            except:
+                continue
+
         return jsonify({
             'fields': sorted(available_fields),
-            'states': 10  # Erhöhen Sie diese Zahl entsprechend Ihrer solve_numerically Funktion
+            'states': 8  # Angepasst an die solve_numerically Funktion
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/bar_chart')
+def get_bar_chart():
+    # set up the figure and Axes
+    fig = plt.figure(figsize=(8, 3))
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax2 = fig.add_subplot(122, projection='3d')
+
+    # fake data
+    x = np.arange(4)
+    y = np.arange(5)
+    xx, yy = np.meshgrid(x, y)
+    x, y = xx.ravel(), yy.ravel()
+
+    top = x + y
+    bottom = np.zeros_like(top)
+    width = depth = 1
+
+    ax1.bar3d(x, y, bottom, width, depth, top, shade=True)
+    ax1.set_title('Shaded')
+
+    ax2.bar3d(x, y, bottom, width, depth, top, shade=False)
+    ax2.set_title('Not Shaded')
+
+    # Save plot to a BytesIO object
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+
+    # Return the image
+    return Response(buffer.getvalue(), mimetype='image/png')
+
+
+@app.route('/api/bson_matrix/<path:filename>')
+def get_bson_matrix_data(filename):
+    try:
+        # Load the BSON file
+        filepath = os.path.join('converted_data', filename)
+        with open(filepath, 'rb') as f:
+            bson_data = f.read()
+
+        # Return as binary response
+        return Response(bson_data, mimetype='application/bson')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/matrix/<path:filename>')
+def get_matrix_data(filename):
+    try:
+        # Load the NPZ file
+        filepath = os.path.join('numerical_data', filename)
+        data = np.load(filepath)
+
+        # Extract the matrix using the correct key 'H' instead of 'matrix'
+        matrix = data['H']
+
+        # Get additional metadata that was saved with the file
+        B_tesla = float(data['B_tesla'])
+        B_au = float(data['B_au'])
+        timestamp = str(data['timestamp'])
+
+        # Handle the metadata which was saved as a JSON string
+        metadata = json.loads(str(data['metadata']))
+
+        # Convert to Python list for JSON serialization
+        matrix_list = matrix.tolist()
+
+        return jsonify({
+            'filename': filename,
+            'size': matrix.shape,
+            'matrix': matrix_list,
+            'B_tesla': B_tesla,
+            'B_au': B_au,
+            'timestamp': timestamp,
+            'metadata': metadata
+        })
+    except Exception as e:
+        print(f"Error loading matrix: {str(e)}")  # Log the error for debugging
+        return jsonify({'error': str(e)}), 500
+
+
+
 if __name__ == '__main__':
     initialize()
-    app.run()
+    app.run(debug=True)

@@ -1,5 +1,3 @@
-# numerical_solver.py
-
 import os
 import json
 import numpy as np
@@ -46,6 +44,95 @@ def V_total(x, y, B):
     return V_coulomb + V_para + V_dia
 
 
+def convert_numpy_types(obj):
+    """Konvertiert NumPy-Datentypen in Python-native Typen"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_types(item) for item in obj)
+    else:
+        return obj
+
+
+def save_hamilton_matrix(B_tesla, H, metadata=None):
+    """Speichert die Hamilton-Matrix für ein bestimmtes B-Feld."""
+    filename = f"hamilton_matrix_B{B_tesla:.3f}T.npz"
+    filepath = os.path.join(NUMERICAL_DATA_DIR, filename)
+
+    # Convert metadata to Python native types to ensure it can be serialized
+    if metadata is not None:
+        metadata = convert_numpy_types(metadata)
+    else:
+        metadata = {}
+
+    # Convert all values to native Python types before saving
+    metadata_json = json.dumps(metadata)
+
+    # Save as a compressed numpy file to save space
+    np.savez_compressed(filepath,
+                        H=H,
+                        B_tesla=float(B_tesla),
+                        B_au=float(tesla_to_au(B_tesla)),
+                        timestamp=str(datetime.datetime.now()),
+                        metadata=metadata_json)
+
+    print(f"Hamilton-Matrix gespeichert in: {filepath}")
+
+
+def load_hamilton_matrix(B_tesla, tolerance=0.1):
+    """Lädt eine vorberechnete Hamilton-Matrix für ein gegebenes B-Feld."""
+    best_match = None
+    smallest_diff = float('inf')
+
+    for file in Path(NUMERICAL_DATA_DIR).glob('hamilton_matrix_B*.npz'):
+        try:
+            file_B = float(file.stem.split('B')[1].replace('T', ''))
+            diff = abs(file_B - B_tesla)
+
+            if diff < smallest_diff and diff <= tolerance:
+                smallest_diff = diff
+                best_match = file
+        except:
+            continue
+
+    if best_match is None:
+        return None
+
+    try:
+        data = np.load(best_match, allow_pickle=True)
+
+        # Parse metadata from JSON string
+        metadata = {}
+        if 'metadata' in data:
+            try:
+                metadata_str = str(data['metadata'])
+                # Remove the leading 'b' and quotes if present
+                if metadata_str.startswith("b'") and metadata_str.endswith("'"):
+                    metadata_str = metadata_str[2:-1]
+                metadata = json.loads(metadata_str)
+            except Exception as e:
+                print(f"Warning: Could not parse metadata: {e}")
+
+        return {
+            'H': data['H'],
+            'B_tesla': float(data['B_tesla']),
+            'B_au': float(data['B_au']),
+            'timestamp': str(data.get('timestamp', '')),
+            'metadata': metadata
+        }
+    except Exception as e:
+        print(f"Error loading Hamilton matrix: {e}")
+        return None
+
+
 def solve_numerically(B, num_states=8):
     """Numerische Lösung der Schrödinger-Gleichung"""
     # Problem parameters
@@ -77,6 +164,10 @@ def solve_numerically(B, num_states=8):
             if j > 0: H[idx, idx - 1] = -1
             if i < n - 3: H[idx, idx + (n - 2)] = -1
             if i > 0: H[idx, idx - (n - 2)] = -1
+
+    # Save the Hamilton matrix to a file
+    B_tesla = au_to_tesla(B)
+    save_hamilton_matrix(B_tesla, H, metadata={'grid_size': n, 'box_size': a})
 
     # Solve eigenvalue problem
     eigenvalues, eigenvectors = np.linalg.eigh(H)
