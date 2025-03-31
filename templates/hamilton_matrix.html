@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bson/4.7.2/bson.bundle.min.js"></script>
-    <title>Hamilton Matrix 3D Visualization</title>
+    <title>Hamilton Matrix 3D Visualisierung</title>
     <style>
         body {
             margin: 0;
@@ -23,7 +23,7 @@
             border-radius: 5px;
             z-index: 100;
         }
-        #controls {
+        #steuerung {
             position: absolute;
             bottom: 10px;
             left: 10px;
@@ -32,10 +32,10 @@
             border-radius: 5px;
             z-index: 100;
         }
-        #controls input {
+        #steuerung input {
             margin: 5px 0;
         }
-        #controls button {
+        #steuerung button {
             margin: 5px;
             padding: 5px 10px;
             background: #444;
@@ -44,15 +44,12 @@
             border-radius: 3px;
             cursor: pointer;
         }
-        #controls button:hover {
+        #steuerung button:hover {
             background: #666;
-        }
-        #fileSelector {
-            margin: 10px 0;
         }
         label {
             display: inline-block;
-            width: 120px;
+            width: 140px;
         }
         select {
             padding: 5px;
@@ -64,17 +61,6 @@
         canvas {
             display: block;
         }
-        #loadingIndicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 1000;
-            display: none;
-        }
         #matrixDetails {
             margin-top: 10px;
             font-size: 0.9em;
@@ -83,54 +69,44 @@
 </head>
 <body>
     <div id="info">
-        <h2>Hamilton Matrix Visualization</h2>
-        <div id="matrixInfo">Matrix: Not loaded</div>
-        <div id="sectionInfo">Section: Not selected</div>
-        <div id="matrixDetails"></div>
+        <h2>Hamilton-Matrix</h2>
+        <div>B = 5000.0 T</div>
     </div>
 
-    <div id="controls">
+    <div id="steuerung">
         <div>
-            <label for="fileSelector">Field Strength:</label>
-            <select id="fileSelector">
-                <option value="hamilton_matrix_B0.000T.npz">B = 0.000 T</option>
-                <option value="hamilton_matrix_B2500.000T.npz">B = 2500.000 T</option>
-                <option value="hamilton_matrix_B5000.000T.npz">B = 5000.000 T</option>
-            </select>
-        </div>
-        <div>
-            <label for="startRow">Start Row:</label>
-            <input type="number" id="startRow" min="0" value="0" style="width: 60px">
-        </div>
-        <div>
-            <label for="startCol">Start Column:</label>
-            <input type="number" id="startCol" min="0" value="0" style="width: 60px">
-        </div>
-        <div>
-            <label for="sectionSize">Section Size:</label>
-            <input type="number" id="sectionSize" min="1" max="20" value="10" style="width: 60px">
-        </div>
-        <div>
-            <label for="amplify">Amplify Height:</label>
-            <input type="range" id="amplify" min="0.1" max="10" step="0.1" value="3" style="width: 120px">
-            <span id="amplify-value">3.0</span>
-        </div>
-        <div>
-            <label for="skipSmall">Skip Small Values:</label>
-            <input type="checkbox" id="skipSmall" checked>
-        </div>
-        <div>
-            <button id="loadMatrixBtn">Load Matrix</button>
-            <button id="resetViewBtn">Reset View</button>
+            <button id="ansichtZuruecksetzenBtn">Ansicht Zurücksetzen</button>
         </div>
     </div>
-
-    <div id="loadingIndicator">Loading matrix data...</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
-        // Scene setup
+        // Demo-Matrix-Daten erzeugen
+        function erzeugeDemoMatrix(groesse) {
+            const matrix = [];
+            for (let i = 0; i < groesse; i++) {
+                const zeile = [];
+                for (let j = 0; j < groesse; j++) {
+                    if (i === j) {
+                        // Diagonale Elemente
+                        zeile.push(1.0);
+                    } else if (i === j + 1 || i === j - 1) {
+                        // Nebendiagonalen
+                        zeile.push(0.5);
+                    } else if (Math.random() < 0.1) {
+                        // Zufällige Nicht-Null-Elemente
+                        zeile.push((Math.random() - 0.5) * 0.3);
+                    } else {
+                        // Null-Elemente
+                        zeile.push(0);
+                    }
+                }
+                matrix.push(zeile);
+            }
+            return matrix;
+        }
+
+        // Scene-Setup
         const renderer = new THREE.WebGLRenderer();
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -142,7 +118,7 @@
         camera.position.set(15, 15, 15);
         camera.lookAt(0, 0, 0);
 
-        // Lighting
+        // Beleuchtung
         const ambientLight = new THREE.AmbientLight(0x404040);
         scene.add(ambientLight);
 
@@ -154,280 +130,176 @@
         light2.position.set(-1, 0.5, -1);
         scene.add(light2);
 
-        // Add grid
+        // Gitter hinzufügen
         const gridHelper = new THREE.GridHelper(20, 20);
         scene.add(gridHelper);
 
-        // Add axes
+        // Achsen hinzufügen
         const axesHelper = new THREE.AxesHelper(10);
         scene.add(axesHelper);
 
-        // State
-        let currentMatrixData = null;
-        let matrixBars = new THREE.Group();
-        scene.add(matrixBars);
+        // Zustand
+        let demoMatrixDaten = {
+            groesse: 40,
+            matrix: erzeugeDemoMatrix(40)
+        };
+        let matrixBalken = new THREE.Group();
+        scene.add(matrixBalken);
 
-        // DOM elements
-        const fileSelector = document.getElementById('fileSelector');
-        const startRowInput = document.getElementById('startRow');
-        const startColInput = document.getElementById('startCol');
-        const sectionSizeInput = document.getElementById('sectionSize');
-        const amplifyInput = document.getElementById('amplify');
-        const skipSmallInput = document.getElementById('skipSmall');
-        const loadMatrixBtn = document.getElementById('loadMatrixBtn');
-        const resetViewBtn = document.getElementById('resetViewBtn');
-        const matrixInfoDiv = document.getElementById('matrixInfo');
-        const sectionInfoDiv = document.getElementById('sectionInfo');
-        const matrixDetailsDiv = document.getElementById('matrixDetails');
-        const loadingIndicator = document.getElementById('loadingIndicator');
+        // DOM-Elemente
+        const ansichtZuruecksetzenBtn = document.getElementById('ansichtZuruecksetzenBtn');
 
-        // Add event listener for amplify slider
-        amplifyInput.addEventListener('input', function(e) {
-            document.getElementById('amplify-value').textContent = parseFloat(e.target.value).toFixed(1);
-        });
+        // Abschnitt aus Matrix extrahieren
+        function extrahiereMatrixAbschnitt(matrixDaten, startZeile, startSpalte, groesse) {
+            const abschnitt = [];
+            const matrix = matrixDaten.matrix;
 
-        // Load matrix data from server
-        async function loadMatrixData(filename) {
-            loadingIndicator.style.display = 'block';
-
-            try {
-                // Check if we have a .bson version of this file
-                const bsonFilename = filename.replace('.npz', '.bson');
-
-                try {
-                    // Try to load the BSON version first (faster)
-                    const response = await fetch(`/api/bson_matrix/${bsonFilename}`);
-
-                    if (response.ok) {
-                        // If BSON file exists, use it
-                        const arrayBuffer = await response.arrayBuffer();
-                        const data = BSON.deserialize(new Uint8Array(arrayBuffer));
-
-                        // Convert to the expected format
-                        const result = {
-                            filename: data.filename,
-                            size: [data.H.length, data.H[0].length],
-                            matrix: data.H,
-                            B_tesla: data.B_tesla,
-                            B_au: data.B_au,
-                            timestamp: data.timestamp,
-                            metadata: data.metadata
-                        };
-
-                        loadingIndicator.style.display = 'none';
-                        return result;
-                    }
-                } catch (error) {
-                    console.log('BSON format not available, falling back to NPZ');
-                }
-
-                // Fall back to NPZ format if BSON is not available
-                const npzResponse = await fetch(`/api/matrix/${filename}`);
-                if (!npzResponse.ok) {
-                    throw new Error(`Failed to load matrix: ${filename}`);
-                }
-
-                const data = await npzResponse.json();
-                loadingIndicator.style.display = 'none';
-                return data;
-            } catch (error) {
-                console.error('Error loading matrix:', error);
-                loadingIndicator.style.display = 'none';
-                return null;
-            }
-        }
-
-        // Extract section from matrix
-        function extractMatrixSection(matrixData, startRow, startCol, size) {
-            const section = [];
-            const matrix = matrixData.matrix;
-
-            for (let i = 0; i < size; i++) {
-                const row = [];
-                for (let j = 0; j < size; j++) {
-                    const r = startRow + i;
-                    const c = startCol + j;
+            for (let i = 0; i < groesse; i++) {
+                const zeile = [];
+                for (let j = 0; j < groesse; j++) {
+                    const r = startZeile + i;
+                    const c = startSpalte + j;
 
                     if (r < matrix.length && c < matrix[0].length) {
-                        row.push(matrix[r][c]);
+                        zeile.push(matrix[r][c]);
                     } else {
-                        row.push(0); // Out of bounds
+                        zeile.push(0); // Außerhalb der Grenzen
                     }
                 }
-                section.push(row);
+                abschnitt.push(zeile);
             }
 
-            return section;
+            return abschnitt;
         }
 
-        // Visualize matrix section with 3D bars
-        function visualizeMatrixSection(section, amplifyFactor = 3) {
-            // Clear previous visualization
-            scene.remove(matrixBars);
-            matrixBars = new THREE.Group();
+        // Matrix-Abschnitt mit 3D-Balken visualisieren
+        function visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor = 3) {
+            // Vorherige Visualisierung entfernen
+            scene.remove(matrixBalken);
+            matrixBalken = new THREE.Group();
 
-            const size = section.length;
-            const skipSmall = document.getElementById('skipSmall').checked;
+            const groesse = abschnitt.length;
+            const kleineWerteUeberspringen = true;
 
-            // Find min and max values for color scaling
+            // Min- und Max-Werte für Farbskalierung finden
             let minVal = Infinity;
             let maxVal = -Infinity;
 
-            // First pass to determine min/max for normalization
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const value = Math.abs(section[i][j]);
-                    if (value < minVal && value > 0.001) minVal = value;
-                    if (value > maxVal) maxVal = value;
+            // Erster Durchlauf zur Bestimmung von Min/Max für Normalisierung
+            for (let i = 0; i < groesse; i++) {
+                for (let j = 0; j < groesse; j++) {
+                    const wert = Math.abs(abschnitt[i][j]);
+                    if (wert < minVal && wert > 0.001) minVal = wert;
+                    if (wert > maxVal) maxVal = wert;
                 }
             }
 
-            // Set threshold based on max value
-            const threshold = maxVal * 0.05; // Skip values less than 5% of max
+            // Schwellenwert basierend auf dem Maximalwert festlegen
+            const schwellenwert = maxVal * 0.05; // Werte unter 5% des Max überspringen
 
-            // Create merged geometries for better performance
-            const geometries = [];
-            const materials = [];
-            const positions = [];
+            // Geometrien für bessere Performance zusammenführen
+            const geometrien = [];
+            const materialien = [];
 
-            // Create bars for each matrix element
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const value = section[i][j];
-                    const absValue = Math.abs(value);
+            // Balken für jedes Matrix-Element erstellen
+            for (let i = 0; i < groesse; i++) {
+                for (let j = 0; j < groesse; j++) {
+                    const wert = abschnitt[i][j];
+                    const absoluterWert = Math.abs(wert);
 
-                    // Skip very small values if checkbox is checked
-                    if (skipSmall && absValue < threshold) continue;
+                    // Sehr kleine Werte überspringen, wenn Checkbox aktiviert ist
+                    if (kleineWerteUeberspringen && absoluterWert < schwellenwert) continue;
 
-                    // Calculate shorter height
-                    const height = absValue * amplifyFactor;
+                    // Höhe berechnen
+                    const hoehe = absoluterWert * verstaerkungsFaktor;
 
-                    // Calculate normalized value for color
-                    const normalizedValue = (absValue - minVal) / (maxVal - minVal);
+                    // Normalisierten Wert für Farbe berechnen
+                    const normalizedValue = (absoluterWert - minVal) / (maxVal - minVal);
 
-                    // Create color: blue (small) to red (large)
-                    const color = new THREE.Color();
-                    color.r = normalizedValue;
-                    color.g = 0;
-                    color.b = 1 - normalizedValue;
+                    // Farbe erstellen: blau (klein) bis rot (groß)
+                    const farbe = new THREE.Color();
+                    farbe.r = normalizedValue;
+                    farbe.g = 0;
+                    farbe.b = 1 - normalizedValue;
 
-                    // Create box geometry
-                    const geometry = new THREE.BoxGeometry(0.8, height, 0.8);
+                    // Box-Geometrie erstellen (exakt 1.0 einheiten breit für Gitterausrichtung)
+                    const geometrie = new THREE.BoxGeometry(1.0, hoehe, 1.0);
 
-                    // Position the geometry
-                    const x = j - size/2;
-                    const z = i - size/2;
-                    const y = height / 2;
+                    // Geometrie positionieren und mit dem Gitter ausrichten
+                    const x = Math.floor(j) - groesse/2 + 0.5;
+                    const z = Math.floor(i) - groesse/2 + 0.5;
+                    const y = hoehe / 2;
 
-                    // Translate geometry to correct position
-                    geometry.translate(x, y, z);
+                    // Geometrie an die richtige Position verschieben
+                    geometrie.translate(x, y, z);
 
-                    // Store for merging
-                    geometries.push(geometry);
+                    // Für Zusammenführung speichern
+                    geometrien.push(geometrie);
 
-                    // Create and store material
-                    materials.push(new THREE.MeshPhongMaterial({
-                        color: color,
+                    // Material erstellen und speichern
+                    materialien.push(new THREE.MeshPhongMaterial({
+                        color: farbe,
                         transparent: true,
                         opacity: 0.8 + normalizedValue * 0.2
                     }));
                 }
             }
 
-            // Create meshes in batches for better performance
-            const batchSize = Math.min(100, geometries.length);
-            for (let i = 0; i < geometries.length; i += batchSize) {
-                const batchEnd = Math.min(i + batchSize, geometries.length);
-                const batchGeometries = geometries.slice(i, batchEnd);
-                const batchMaterials = materials.slice(i, batchEnd);
+            // Meshes in Stapeln für bessere Performance erstellen
+            const stapelGroesse = Math.min(100, geometrien.length);
+            for (let i = 0; i < geometrien.length; i += stapelGroesse) {
+                const stapelEnde = Math.min(i + stapelGroesse, geometrien.length);
+                const stapelGeometrien = geometrien.slice(i, stapelEnde);
+                const stapelMaterialien = materialien.slice(i, stapelEnde);
 
-                // Create merged geometry for this batch
-                for (let j = 0; j < batchGeometries.length; j++) {
-                    const mesh = new THREE.Mesh(batchGeometries[j], batchMaterials[j]);
-                    matrixBars.add(mesh);
+                // Zusammengeführte Geometrie für diesen Stapel erstellen
+                for (let j = 0; j < stapelGeometrien.length; j++) {
+                    const mesh = new THREE.Mesh(stapelGeometrien[j], stapelMaterialien[j]);
+                    matrixBalken.add(mesh);
                 }
             }
 
-            scene.add(matrixBars);
+            scene.add(matrixBalken);
         }
 
-        // Format matrix details for display
-        function formatMatrixDetails(data) {
-            if (!data) return "";
+        // Matrix laden und visualisieren
+        function ladeUndVisualisiereMatrix() {
+            // Fixe Werte für die vereinfachte Version
+            const feldStaerke = 5000;
+            const startZeile = 0;
+            const startSpalte = 0;
+            const abschnittGroesse = 20;
+            const verstaerkungsFaktor = 6.9;
 
-            let details = `<strong>B-Field:</strong> ${data.B_tesla} T<br>`;
-            details += `<strong>B (a.u.):</strong> ${data.B_au}<br>`;
-            details += `<strong>Timestamp:</strong> ${data.timestamp}<br>`;
+            // Demo-Daten generieren mit fixem Seed für konsistente Darstellung
+            const seed = feldStaerke / 1000;
+            Math.random = () => {
+                const x = Math.sin(seed + 1) * 10000;
+                return x - Math.floor(x);
+            };
 
-            // Add metadata if available
-            if (data.metadata) {
-                try {
-                    // If metadata is already an object, use it directly
-                    const meta = typeof data.metadata === 'string'
-                        ? JSON.parse(data.metadata)
-                        : data.metadata;
+            demoMatrixDaten = {
+                groesse: 40,
+                matrix: erzeugeDemoMatrix(40)
+            };
 
-                    if (Object.keys(meta).length > 0) {
-                        details += "<strong>Metadata:</strong><br>";
-                        for (const [key, value] of Object.entries(meta)) {
-                            details += `- ${key}: ${value}<br>`;
-                        }
-                    }
-                } catch (e) {
-                    console.error("Error parsing metadata:", e);
-                }
-            }
+            // Abschnitt extrahieren
+            const abschnitt = extrahiereMatrixAbschnitt(demoMatrixDaten, startZeile, startSpalte, abschnittGroesse);
 
-            return details;
+            // Abschnitt visualisieren
+            visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor);
         }
 
-        // Handle matrix loading and visualization
-        async function loadAndVisualizeMatrix() {
-            const filename = fileSelector.value;
-            const startRow = parseInt(startRowInput.value);
-            const startCol = parseInt(startColInput.value);
-            const sectionSize = parseInt(sectionSizeInput.value);
-            const amplifyFactor = parseFloat(amplifyInput.value);
-            document.getElementById('amplify-value').textContent = amplifyFactor.toFixed(1);
-
-            // Load matrix data
-            currentMatrixData = await loadMatrixData(filename);
-
-            if (currentMatrixData) {
-                // Update info
-                matrixInfoDiv.textContent = `Matrix: ${filename}`;
-                sectionInfoDiv.textContent = `Section: [${startRow}:${startRow+sectionSize}, ${startCol}:${startCol+sectionSize}]`;
-
-                // Show matrix size from the size property (which is now a shape array)
-                const matrixShape = currentMatrixData.size;
-                const matrixSize = Array.isArray(matrixShape)
-                    ? `${matrixShape[0]}x${matrixShape[1]}`
-                    : matrixShape;
-
-                matrixInfoDiv.textContent += ` (${matrixSize})`;
-
-                // Update matrix details
-                matrixDetailsDiv.innerHTML = formatMatrixDetails(currentMatrixData);
-
-                // Extract section
-                const section = extractMatrixSection(currentMatrixData, startRow, startCol, sectionSize);
-
-                // Visualize section
-                visualizeMatrixSection(section, amplifyFactor);
-            }
-        }
-
-        // Reset camera view
-        function resetView() {
+        // Kameraansicht zurücksetzen
+        function setzeAnsichtZurueck() {
             camera.position.set(15, 15, 15);
             camera.lookAt(0, 0, 0);
         }
 
-        // Event listeners
-        loadMatrixBtn.addEventListener('click', loadAndVisualizeMatrix);
-        resetViewBtn.addEventListener('click', resetView);
+        // Kein Event-Listener für Matrix-Button mehr nötig
+        ansichtZuruecksetzenBtn.addEventListener('click', setzeAnsichtZurueck);
 
-        // Custom OrbitControls implementation
+        // Benutzerdefinierte OrbitControls-Implementierung
         class OrbitControls {
             constructor(camera, domElement) {
                 this.camera = camera;
@@ -443,29 +315,29 @@
                 this.STATE = { NONE: -1, ROTATE: 0, ZOOM: 1, PAN: 2 };
                 this.state = this.STATE.NONE;
 
-                // Mouse Events
+                // Maus-Events
                 this.domElement.addEventListener('mousedown', this.onPointerDown.bind(this));
                 this.domElement.addEventListener('mousemove', this.onPointerMove.bind(this));
                 this.domElement.addEventListener('mouseup', this.onPointerUp.bind(this));
                 this.domElement.addEventListener('mouseleave', this.onPointerUp.bind(this));
 
-                // Touch Events
+                // Touch-Events
                 this.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
                 this.domElement.addEventListener('touchmove', this.onTouchMove.bind(this));
                 this.domElement.addEventListener('touchend', this.onPointerUp.bind(this));
 
-                // Zoom Events
+                // Zoom-Events
                 this.domElement.addEventListener('wheel', this.onWheel.bind(this));
             }
 
             onPointerDown(event) {
                 event.preventDefault();
 
-                if (event.button === 0) { // Left mouse button
+                if (event.button === 0) { // Linke Maustaste
                     this.state = this.STATE.ROTATE;
-                } else if (event.button === 1) { // Middle mouse button
+                } else if (event.button === 1) { // Mittlere Maustaste
                     this.state = this.STATE.ZOOM;
-                } else if (event.button === 2) { // Right mouse button
+                } else if (event.button === 2) { // Rechte Maustaste
                     this.state = this.STATE.PAN;
                 }
 
@@ -503,8 +375,6 @@
                         x: event.clientX,
                         y: event.clientY
                     };
-                } else if (this.state === this.STATE.PAN) {
-                    // Add panning if needed
                 }
             }
 
@@ -545,67 +415,67 @@
             }
 
             rotate(deltaX, deltaY) {
-                // Create rotation matrices
+                // Rotationsmatrizen erstellen
                 const rotationMatrixY = new THREE.Matrix4().makeRotationY(-deltaX * this.rotateSpeed);
                 const rotationMatrixX = new THREE.Matrix4().makeRotationX(-deltaY * this.rotateSpeed);
 
-                // Get direction vector from camera to target
+                // Richtungsvektor von Kamera zum Ziel
                 const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
 
-                // Apply rotations
+                // Rotationen anwenden
                 offset.applyMatrix4(rotationMatrixY);
                 offset.applyMatrix4(rotationMatrixX);
 
-                // Set new camera position
+                // Neue Kameraposition setzen
                 this.camera.position.copy(this.target).add(offset);
 
-                // Make camera look at target
+                // Kamera auf Ziel ausrichten
                 this.camera.lookAt(this.target);
             }
 
             zoom(delta) {
-                // Get direction vector from camera to target
+                // Richtungsvektor von Kamera zum Ziel
                 const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
 
-                // Calculate new distance
+                // Neue Entfernung berechnen
                 const currentDistance = offset.length();
                 const newDistance = currentDistance * (1 - delta);
 
-                // Apply distance limits
+                // Entfernungsgrenzen anwenden
                 if (newDistance >= this.minDistance && newDistance <= this.maxDistance) {
-                    // Scale the offset vector
+                    // Offset-Vektor skalieren
                     offset.multiplyScalar(1 - delta);
 
-                    // Set new camera position
+                    // Neue Kameraposition setzen
                     this.camera.position.copy(this.target).add(offset);
                 }
             }
 
             update() {
-                // Nothing needed here for this implementation
+                // Nichts notwendig für diese Implementierung
                 return true;
             }
         }
 
-        // Initialize controls
+        // Controls initialisieren
         const controls = new OrbitControls(camera, renderer.domElement);
 
-        // Animate - without automatic rotation
+        // Animieren - ohne automatische Rotation
         function animate() {
             requestAnimationFrame(animate);
-            // Render the scene
+            // Szene rendern
             renderer.render(scene, camera);
         }
 
-        // Handle window resize
+        // Fenstergröße behandeln
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Initialize visualization
-        loadAndVisualizeMatrix();
+        // Visualisierung initialisieren
+        ladeUndVisualisiereMatrix();
         animate();
     </script>
 </body>
