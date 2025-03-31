@@ -578,6 +578,57 @@ def get_matrix_data(filename):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route("/api/eigenwerte/<path:filename>")
+def energy_values(filename):
+    filepath = os.path.join('numerical_data', filename)
+
+    try:
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+
+        # Process energy values to extract plain numbers
+        energy_values = []
+        raw_values = []
+
+        # Figure out where the energy values are in the structure
+        if isinstance(data, dict):
+            if "states" in data:
+                if isinstance(data["states"], dict) and "energy" in data["states"]:
+                    raw_values = data["states"]["energy"]
+                elif isinstance(data["states"], list):
+                    raw_values = data["states"]
+            elif "energy" in data:
+                raw_values = data["energy"]
+
+        # Convert complex structures to simple numbers if needed
+        for val in raw_values:
+            if isinstance(val, (int, float)):
+                energy_values.append(val)
+            elif isinstance(val, dict) and "value" in val:
+                energy_values.append(val["value"])
+            elif isinstance(val, dict) and len(val) > 0:
+                # Take the first numeric value we find
+                for k, v in val.items():
+                    if isinstance(v, (int, float)):
+                        energy_values.append(v)
+                        break
+            else:
+                # If all else fails, add a placeholder
+                energy_values.append(None)
+
+        # Get B_tesla value with fallback
+        B_tesla = data.get("B_tesla", float(filename.split("B")[1].replace("T.json", "")))
+
+        return jsonify({
+            'energy': energy_values,
+            'B_tesla': B_tesla
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/eigenwerte")
+def eigenwerte():
+    return render_template("eigenwerte.html")
 
 if __name__ == '__main__':
     initialize()

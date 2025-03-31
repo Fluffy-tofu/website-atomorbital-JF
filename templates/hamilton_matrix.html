@@ -3,480 +3,627 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bson/4.7.2/bson.bundle.min.js"></script>
-    <title>Hamilton Matrix 3D Visualisierung</title>
+    <title>Hamilton Matrix</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/x-mathjax-config">
+        MathJax.Hub.Config({
+            tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]},
+            TeX: {extensions: ["AMSmath.js", "AMSsymbols.js"]},
+            "HTML-CSS": {
+                styles: {".MathJax": {color: "white"}, ".MathJax_Display": {color: "white"}}
+            }
+        });
+    </script>
     <style>
         body {
+            background-color: black;
+            color: white;
+            font-family: 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
             margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #000;
-            color: white;
-            font-family: Arial, sans-serif;
+            padding: 20px;
         }
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 5px;
-            z-index: 100;
-        }
-        #steuerung {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 5px;
-            z-index: 100;
-        }
-        #steuerung input {
-            margin: 5px 0;
-        }
-        #steuerung button {
-            margin: 5px;
-            padding: 5px 10px;
-            background: #444;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        #steuerung button:hover {
-            background: #666;
-        }
-        label {
-            display: inline-block;
-            width: 140px;
-        }
+
         select {
-            padding: 5px;
-            background: #444;
+            background-color: black;
             color: white;
-            border: none;
-            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 0;
+            font-family: 'Times New Roman', serif;
+            font-size: 1rem;
+            margin-bottom: 3rem;
+            cursor: pointer;
+            outline: none;
         }
-        canvas {
-            display: block;
+
+        select:focus {
+            border-color: rgba(255, 255, 255, 0.5);
         }
-        #matrixDetails {
-            margin-top: 10px;
-            font-size: 0.9em;
+
+        .matrix-container {
+            text-align: center;
+            margin: 2rem 0;
+            min-height: 150px;
+        }
+
+        .loading {
+            opacity: 0.6;
+            font-style: italic;
+            font-size: 1.2rem;
         }
     </style>
 </head>
 <body>
-    <div id="info">
-        <h2>Hamilton-Matrix</h2>
-        <div>B = 5000.0 T</div>
+    <a href="/equation" id="back-button" style="
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background-color: black;
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 8px 16px;
+        font-family: 'Times New Roman', serif;
+        font-size: 1rem;
+        text-decoration: none;
+        cursor: pointer;">
+        Zurück
+    </a>
+    <select id="b-field-select">
+        <option value="">B-Felder werden geladen...</option>
+    </select>
+
+    <div id="matrix-container" class="matrix-container">
+        <div class="loading">Wählen Sie ein B-Feld, um die Matrix anzuzeigen</div>
     </div>
 
-    <div id="steuerung">
-        <div>
-            <button id="ansichtZuruecksetzenBtn">Ansicht Zurücksetzen</button>
-        </div>
-    </div>
+    <button id="show3DBtn" style="margin-top: 20px; padding: 8px 16px; background-color: #333; color: white; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; font-family: 'Times New Roman', serif;">3D Ansicht</button>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="visualization3D" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000;"></div>
+
     <script>
-        // Demo-Matrix-Daten erzeugen
-        function erzeugeDemoMatrix(groesse) {
-            const matrix = [];
-            for (let i = 0; i < groesse; i++) {
-                const zeile = [];
-                for (let j = 0; j < groesse; j++) {
-                    if (i === j) {
-                        // Diagonale Elemente
-                        zeile.push(1.0);
-                    } else if (i === j + 1 || i === j - 1) {
-                        // Nebendiagonalen
-                        zeile.push(0.5);
-                    } else if (Math.random() < 0.1) {
-                        // Zufällige Nicht-Null-Elemente
-                        zeile.push((Math.random() - 0.5) * 0.3);
-                    } else {
-                        // Null-Elemente
-                        zeile.push(0);
+        function loadScript(url, callback) {
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = url;
+            script.onload = callback;
+            document.head.appendChild(script);
+        }
+
+        const bFieldSelect = document.getElementById('b-field-select');
+        const matrixContainer = document.getElementById('matrix-container');
+        const show3DBtn = document.getElementById('show3DBtn');
+        const visualization3D = document.getElementById('visualization3D');
+
+        const MAX_DISPLAY = 4;
+
+        document.addEventListener('DOMContentLoaded', fetchAvailableBFields);
+
+        bFieldSelect.addEventListener('change', loadMatrixData);
+
+        function fetchAvailableBFields() {
+            fetch('/available_b_fields')
+                .then(response => response.json())
+                .then(data => {
+                    populateBFieldSelect(data.fields);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    matrixContainer.innerHTML = '<div class="loading">Fehler beim Laden der B-Felder</div>';
+                });
+        }
+
+        function populateBFieldSelect(fields) {
+            bFieldSelect.innerHTML = '';
+
+            if (fields.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Keine B-Felder verfügbar';
+                bFieldSelect.appendChild(option);
+                return;
+            }
+
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'B-Feld auswählen';
+            bFieldSelect.appendChild(defaultOption);
+
+            fields.forEach(field => {
+                const option = document.createElement('option');
+                option.value = field;
+                option.textContent = `${field} T`;
+                bFieldSelect.appendChild(option);
+            });
+        }
+
+        function loadMatrixData() {
+            const selectedField = bFieldSelect.value;
+
+            if (!selectedField) {
+                matrixContainer.innerHTML = '<div class="loading">Wählen Sie ein B-Feld, um die Matrix anzuzeigen</div>';
+                return;
+            }
+
+            matrixContainer.innerHTML = '<div class="loading">Matrixdaten werden geladen...</div>';
+
+            const filename = `hamilton_matrix_B${selectedField}.000T.npz`;
+
+            fetch(`/api/matrix/${filename}`)
+                .then(response => response.json())
+                .then(data => {
+                    displayMatrixData(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    matrixContainer.innerHTML = '<div class="loading">Fehler beim Laden der Matrixdaten</div>';
+                });
+        }
+
+        function formatComplexForLatex(value) {
+            if (typeof value === 'number') {
+                return value.toFixed(2);
+            }
+
+            if (Array.isArray(value) && value.length === 2) {
+                const real = value[0];
+                const imag = value[1];
+
+                if (Math.abs(real) < 1e-10) {
+                    return `${imag.toFixed(2)}i`;
+                }
+
+                if (Math.abs(imag) < 1e-10) {
+                    return `${real.toFixed(2)}`;
+                }
+
+                const sign = imag >= 0 ? '+' : '';
+                return `${real.toFixed(2)}${sign}${imag.toFixed(2)}i`;
+            }
+
+            return `${value}`;
+        }
+
+        function displayMatrixData(data) {
+            const matrix = data.matrix;
+            const [rows, cols] = data.size;
+
+            const displayRows = Math.min(rows, MAX_DISPLAY);
+            const displayCols = Math.min(cols, MAX_DISPLAY);
+
+            let latex = `$$H = \\begin{pmatrix}\n`;
+
+            for (let i = 0; i < displayRows; i++) {
+                const rowValues = [];
+
+                for (let j = 0; j < displayCols; j++) {
+                    rowValues.push(formatComplexForLatex(matrix[i][j]));
+                }
+
+                if (cols > displayCols) {
+                    rowValues.push("\\cdots");
+                }
+
+                latex += rowValues.join(" & ");
+
+                if (i < displayRows - 1 || rows > displayRows) {
+                    latex += " \\\\\n";
+                }
+            }
+
+            if (rows > displayRows) {
+                const rowValues = [];
+
+                for (let j = 0; j < displayCols; j++) {
+                    rowValues.push("\\vdots");
+                }
+
+                if (cols > displayCols) {
+                    rowValues.push("\\ddots");
+                }
+
+                latex += rowValues.join(" & ");
+            }
+
+            latex += `\n\\end{pmatrix}$$`;
+
+            const bFieldInfo = `$$B = ${data.B_tesla}\\text{ T}$$`;
+
+            matrixContainer.innerHTML = latex + bFieldInfo;
+
+            MathJax.Hub.Queue(["Typeset", MathJax.Hub, matrixContainer]);
+        }
+
+        show3DBtn.addEventListener('click', function() {
+            const selectedField = bFieldSelect.value;
+            if (!selectedField) {
+                alert('Bitte wählen Sie zuerst ein B-Feld aus');
+                return;
+            }
+
+            visualization3D.style.display = 'block';
+
+            if (typeof THREE === 'undefined') {
+                loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', function() {
+                    init3DVisualization(selectedField);
+                });
+            } else {
+                init3DVisualization(selectedField);
+            }
+        });
+
+        function init3DVisualization(bField) {
+            visualization3D.innerHTML = `
+            <div id="info" style="position: absolute; top: 10px; left: 10px; padding: 10px; background: rgba(0, 0, 0, 0.7); border-radius: 5px; z-index: 100;">
+                <h2>Hamilton-Matrix</h2>
+                <div>B = ${bField} T</div>
+            </div>
+
+            <div id="steuerung" style="position: absolute; bottom: 10px; left: 10px; padding: 10px; background: rgba(0, 0, 0, 0.7); border-radius: 5px; z-index: 100;">
+                <div>
+                    <button id="ansichtZuruecksetzenBtn">Ansicht zurücksetzen</button>
+                    <button id="exitBtn">3D Ansicht verlassen</button>
+                </div>
+            </div>`;
+
+            function erzeugeDemoMatrix(groesse) {
+                const matrix = [];
+                for (let i = 0; i < groesse; i++) {
+                    const zeile = [];
+                    for (let j = 0; j < groesse; j++) {
+                        if (i === j) {
+                            zeile.push(1.0);
+                        } else if (i === j + 1 || i === j - 1) {
+                            zeile.push(0.5);
+                        } else if (Math.random() < 0.1) {
+                            zeile.push((Math.random() - 0.5) * 0.3);
+                        } else {
+                            zeile.push(0);
+                        }
                     }
+                    matrix.push(zeile);
                 }
-                matrix.push(zeile);
-            }
-            return matrix;
-        }
-
-        // Scene-Setup
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0f0f0f);
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(15, 15, 15);
-        camera.lookAt(0, 0, 0);
-
-        // Beleuchtung
-        const ambientLight = new THREE.AmbientLight(0x404040);
-        scene.add(ambientLight);
-
-        const light1 = new THREE.DirectionalLight(0xffffff, 0.8);
-        light1.position.set(1, 1, 1);
-        scene.add(light1);
-
-        const light2 = new THREE.DirectionalLight(0xffffff, 0.5);
-        light2.position.set(-1, 0.5, -1);
-        scene.add(light2);
-
-        // Gitter hinzufügen
-        const gridHelper = new THREE.GridHelper(20, 20);
-        scene.add(gridHelper);
-
-        // Achsen hinzufügen
-        const axesHelper = new THREE.AxesHelper(10);
-        scene.add(axesHelper);
-
-        // Zustand
-        let demoMatrixDaten = {
-            groesse: 40,
-            matrix: erzeugeDemoMatrix(40)
-        };
-        let matrixBalken = new THREE.Group();
-        scene.add(matrixBalken);
-
-        // DOM-Elemente
-        const ansichtZuruecksetzenBtn = document.getElementById('ansichtZuruecksetzenBtn');
-
-        // Abschnitt aus Matrix extrahieren
-        function extrahiereMatrixAbschnitt(matrixDaten, startZeile, startSpalte, groesse) {
-            const abschnitt = [];
-            const matrix = matrixDaten.matrix;
-
-            for (let i = 0; i < groesse; i++) {
-                const zeile = [];
-                for (let j = 0; j < groesse; j++) {
-                    const r = startZeile + i;
-                    const c = startSpalte + j;
-
-                    if (r < matrix.length && c < matrix[0].length) {
-                        zeile.push(matrix[r][c]);
-                    } else {
-                        zeile.push(0); // Außerhalb der Grenzen
-                    }
-                }
-                abschnitt.push(zeile);
+                return matrix;
             }
 
-            return abschnitt;
-        }
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            visualization3D.appendChild(renderer.domElement);
 
-        // Matrix-Abschnitt mit 3D-Balken visualisieren
-        function visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor = 3) {
-            // Vorherige Visualisierung entfernen
-            scene.remove(matrixBalken);
-            matrixBalken = new THREE.Group();
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f0f0f);
 
-            const groesse = abschnitt.length;
-            const kleineWerteUeberspringen = true;
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(15, 15, 15);
+            camera.lookAt(0, 0, 0);
 
-            // Min- und Max-Werte für Farbskalierung finden
-            let minVal = Infinity;
-            let maxVal = -Infinity;
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
 
-            // Erster Durchlauf zur Bestimmung von Min/Max für Normalisierung
-            for (let i = 0; i < groesse; i++) {
-                for (let j = 0; j < groesse; j++) {
-                    const wert = Math.abs(abschnitt[i][j]);
-                    if (wert < minVal && wert > 0.001) minVal = wert;
-                    if (wert > maxVal) maxVal = wert;
-                }
-            }
+            const light1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            light1.position.set(1, 1, 1);
+            scene.add(light1);
 
-            // Schwellenwert basierend auf dem Maximalwert festlegen
-            const schwellenwert = maxVal * 0.05; // Werte unter 5% des Max überspringen
+            const light2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            light2.position.set(-1, 0.5, -1);
+            scene.add(light2);
 
-            // Geometrien für bessere Performance zusammenführen
-            const geometrien = [];
-            const materialien = [];
+            const gridHelper = new THREE.GridHelper(20, 20);
+            scene.add(gridHelper);
 
-            // Balken für jedes Matrix-Element erstellen
-            for (let i = 0; i < groesse; i++) {
-                for (let j = 0; j < groesse; j++) {
-                    const wert = abschnitt[i][j];
-                    const absoluterWert = Math.abs(wert);
+            const axesHelper = new THREE.AxesHelper(10);
+            scene.add(axesHelper);
 
-                    // Sehr kleine Werte überspringen, wenn Checkbox aktiviert ist
-                    if (kleineWerteUeberspringen && absoluterWert < schwellenwert) continue;
-
-                    // Höhe berechnen
-                    const hoehe = absoluterWert * verstaerkungsFaktor;
-
-                    // Normalisierten Wert für Farbe berechnen
-                    const normalizedValue = (absoluterWert - minVal) / (maxVal - minVal);
-
-                    // Farbe erstellen: blau (klein) bis rot (groß)
-                    const farbe = new THREE.Color();
-                    farbe.r = normalizedValue;
-                    farbe.g = 0;
-                    farbe.b = 1 - normalizedValue;
-
-                    // Box-Geometrie erstellen (exakt 1.0 einheiten breit für Gitterausrichtung)
-                    const geometrie = new THREE.BoxGeometry(1.0, hoehe, 1.0);
-
-                    // Geometrie positionieren und mit dem Gitter ausrichten
-                    const x = Math.floor(j) - groesse/2 + 0.5;
-                    const z = Math.floor(i) - groesse/2 + 0.5;
-                    const y = hoehe / 2;
-
-                    // Geometrie an die richtige Position verschieben
-                    geometrie.translate(x, y, z);
-
-                    // Für Zusammenführung speichern
-                    geometrien.push(geometrie);
-
-                    // Material erstellen und speichern
-                    materialien.push(new THREE.MeshPhongMaterial({
-                        color: farbe,
-                        transparent: true,
-                        opacity: 0.8 + normalizedValue * 0.2
-                    }));
-                }
-            }
-
-            // Meshes in Stapeln für bessere Performance erstellen
-            const stapelGroesse = Math.min(100, geometrien.length);
-            for (let i = 0; i < geometrien.length; i += stapelGroesse) {
-                const stapelEnde = Math.min(i + stapelGroesse, geometrien.length);
-                const stapelGeometrien = geometrien.slice(i, stapelEnde);
-                const stapelMaterialien = materialien.slice(i, stapelEnde);
-
-                // Zusammengeführte Geometrie für diesen Stapel erstellen
-                for (let j = 0; j < stapelGeometrien.length; j++) {
-                    const mesh = new THREE.Mesh(stapelGeometrien[j], stapelMaterialien[j]);
-                    matrixBalken.add(mesh);
-                }
-            }
-
-            scene.add(matrixBalken);
-        }
-
-        // Matrix laden und visualisieren
-        function ladeUndVisualisiereMatrix() {
-            // Fixe Werte für die vereinfachte Version
-            const feldStaerke = 5000;
-            const startZeile = 0;
-            const startSpalte = 0;
-            const abschnittGroesse = 20;
-            const verstaerkungsFaktor = 6.9;
-
-            // Demo-Daten generieren mit fixem Seed für konsistente Darstellung
-            const seed = feldStaerke / 1000;
-            Math.random = () => {
-                const x = Math.sin(seed + 1) * 10000;
-                return x - Math.floor(x);
-            };
-
-            demoMatrixDaten = {
+            let demoMatrixDaten = {
                 groesse: 40,
                 matrix: erzeugeDemoMatrix(40)
             };
+            let matrixBalken = new THREE.Group();
+            scene.add(matrixBalken);
 
-            // Abschnitt extrahieren
-            const abschnitt = extrahiereMatrixAbschnitt(demoMatrixDaten, startZeile, startSpalte, abschnittGroesse);
+            const ansichtZuruecksetzenBtn = document.getElementById('ansichtZuruecksetzenBtn');
+            const exitBtn = document.getElementById('exitBtn');
 
-            // Abschnitt visualisieren
-            visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor);
-        }
+            exitBtn.addEventListener('click', function() {
+                cancelAnimationFrame(animationId);
+                visualization3D.style.display = 'none';
+                visualization3D.innerHTML = '';
+            });
 
-        // Kameraansicht zurücksetzen
-        function setzeAnsichtZurueck() {
-            camera.position.set(15, 15, 15);
-            camera.lookAt(0, 0, 0);
-        }
+            function extrahiereMatrixAbschnitt(matrixDaten, startZeile, startSpalte, groesse) {
+                const abschnitt = [];
+                const matrix = matrixDaten.matrix;
 
-        // Kein Event-Listener für Matrix-Button mehr nötig
-        ansichtZuruecksetzenBtn.addEventListener('click', setzeAnsichtZurueck);
+                for (let i = 0; i < groesse; i++) {
+                    const zeile = [];
+                    for (let j = 0; j < groesse; j++) {
+                        const r = startZeile + i;
+                        const c = startSpalte + j;
 
-        // Benutzerdefinierte OrbitControls-Implementierung
-        class OrbitControls {
-            constructor(camera, domElement) {
-                this.camera = camera;
-                this.domElement = domElement;
-                this.target = new THREE.Vector3();
-
-                this.rotateSpeed = 1.0;
-                this.zoomSpeed = 1.0;
-
-                this.minDistance = 5;
-                this.maxDistance = 50;
-
-                this.STATE = { NONE: -1, ROTATE: 0, ZOOM: 1, PAN: 2 };
-                this.state = this.STATE.NONE;
-
-                // Maus-Events
-                this.domElement.addEventListener('mousedown', this.onPointerDown.bind(this));
-                this.domElement.addEventListener('mousemove', this.onPointerMove.bind(this));
-                this.domElement.addEventListener('mouseup', this.onPointerUp.bind(this));
-                this.domElement.addEventListener('mouseleave', this.onPointerUp.bind(this));
-
-                // Touch-Events
-                this.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
-                this.domElement.addEventListener('touchmove', this.onTouchMove.bind(this));
-                this.domElement.addEventListener('touchend', this.onPointerUp.bind(this));
-
-                // Zoom-Events
-                this.domElement.addEventListener('wheel', this.onWheel.bind(this));
-            }
-
-            onPointerDown(event) {
-                event.preventDefault();
-
-                if (event.button === 0) { // Linke Maustaste
-                    this.state = this.STATE.ROTATE;
-                } else if (event.button === 1) { // Mittlere Maustaste
-                    this.state = this.STATE.ZOOM;
-                } else if (event.button === 2) { // Rechte Maustaste
-                    this.state = this.STATE.PAN;
+                        if (r < matrix.length && c < matrix[0].length) {
+                            zeile.push(matrix[r][c]);
+                        } else {
+                            zeile.push(0);
+                        }
+                    }
+                    abschnitt.push(zeile);
                 }
 
-                this.startPoint = {
-                    x: event.clientX,
-                    y: event.clientY
+                return abschnitt;
+            }
+
+            function visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor = 3) {
+                scene.remove(matrixBalken);
+                matrixBalken = new THREE.Group();
+
+                const groesse = abschnitt.length;
+                const kleineWerteUeberspringen = true;
+
+                let minVal = Infinity;
+                let maxVal = -Infinity;
+
+                for (let i = 0; i < groesse; i++) {
+                    for (let j = 0; j < groesse; j++) {
+                        const wert = Math.abs(abschnitt[i][j]);
+                        if (wert < minVal && wert > 0.001) minVal = wert;
+                        if (wert > maxVal) maxVal = wert;
+                    }
+                }
+
+                const schwellenwert = maxVal * 0.05;
+
+                const geometrien = [];
+                const materialien = [];
+
+                for (let i = 0; i < groesse; i++) {
+                    for (let j = 0; j < groesse; j++) {
+                        const wert = abschnitt[i][j];
+                        const absoluterWert = Math.abs(wert);
+
+                        if (kleineWerteUeberspringen && absoluterWert < schwellenwert) continue;
+
+                        const hoehe = absoluterWert * verstaerkungsFaktor;
+
+                        const normalizedValue = (absoluterWert - minVal) / (maxVal - minVal);
+
+                        const farbe = new THREE.Color();
+                        farbe.r = normalizedValue;
+                        farbe.g = 0;
+                        farbe.b = 1 - normalizedValue;
+
+                        const geometrie = new THREE.BoxGeometry(1.0, hoehe, 1.0);
+
+                        const x = Math.floor(j) - groesse/2 + 0.5;
+                        const z = Math.floor(i) - groesse/2 + 0.5;
+                        const y = hoehe / 2;
+
+                        geometrie.translate(x, y, z);
+
+                        geometrien.push(geometrie);
+
+                        materialien.push(new THREE.MeshPhongMaterial({
+                            color: farbe,
+                            transparent: true,
+                            opacity: 0.8 + normalizedValue * 0.2
+                        }));
+                    }
+                }
+
+                const stapelGroesse = Math.min(100, geometrien.length);
+                for (let i = 0; i < geometrien.length; i += stapelGroesse) {
+                    const stapelEnde = Math.min(i + stapelGroesse, geometrien.length);
+                    const stapelGeometrien = geometrien.slice(i, stapelEnde);
+                    const stapelMaterialien = materialien.slice(i, stapelEnde);
+
+                    for (let j = 0; j < stapelGeometrien.length; j++) {
+                        const mesh = new THREE.Mesh(stapelGeometrien[j], stapelMaterialien[j]);
+                        matrixBalken.add(mesh);
+                    }
+                }
+
+                scene.add(matrixBalken);
+            }
+
+            function ladeUndVisualisiereMatrix() {
+                const feldStaerke = parseFloat(bField);
+                const startZeile = 0;
+                const startSpalte = 0;
+                const abschnittGroesse = 20;
+                const verstaerkungsFaktor = 6.9;
+
+                const seed = feldStaerke / 1000;
+                const originalRandom = Math.random;
+                Math.random = () => {
+                    const x = Math.sin(seed + 1) * 10000;
+                    return x - Math.floor(x);
                 };
+
+                demoMatrixDaten = {
+                    groesse: 40,
+                    matrix: erzeugeDemoMatrix(40)
+                };
+
+                Math.random = originalRandom;
+
+                const abschnitt = extrahiereMatrixAbschnitt(demoMatrixDaten, startZeile, startSpalte, abschnittGroesse);
+
+                visualisiereMatrixAbschnitt(abschnitt, verstaerkungsFaktor);
             }
 
-            onTouchStart(event) {
-                event.preventDefault();
+            function setzeAnsichtZurueck() {
+                camera.position.set(15, 15, 15);
+                camera.lookAt(0, 0, 0);
+            }
 
-                if (event.touches.length === 1) {
-                    this.state = this.STATE.ROTATE;
-                    this.startPoint = {
-                        x: event.touches[0].clientX,
-                        y: event.touches[0].clientY
-                    };
-                } else if (event.touches.length === 2) {
-                    this.state = this.STATE.ZOOM;
-                    const dx = event.touches[0].clientX - event.touches[1].clientX;
-                    const dy = event.touches[0].clientY - event.touches[1].clientY;
-                    this.startDistance = Math.sqrt(dx * dx + dy * dy);
+            ansichtZuruecksetzenBtn.addEventListener('click', setzeAnsichtZurueck);
+
+            class OrbitControls {
+                constructor(camera, domElement) {
+                    this.camera = camera;
+                    this.domElement = domElement;
+                    this.target = new THREE.Vector3();
+
+                    this.rotateSpeed = 1.0;
+                    this.zoomSpeed = 1.0;
+
+                    this.minDistance = 5;
+                    this.maxDistance = 50;
+
+                    this.STATE = { NONE: -1, ROTATE: 0, ZOOM: 1, PAN: 2 };
+                    this.state = this.STATE.NONE;
+
+                    this.domElement.addEventListener('mousedown', this.onPointerDown.bind(this));
+                    this.domElement.addEventListener('mousemove', this.onPointerMove.bind(this));
+                    this.domElement.addEventListener('mouseup', this.onPointerUp.bind(this));
+                    this.domElement.addEventListener('mouseleave', this.onPointerUp.bind(this));
+
+                    this.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
+                    this.domElement.addEventListener('touchmove', this.onTouchMove.bind(this));
+                    this.domElement.addEventListener('touchend', this.onPointerUp.bind(this));
+
+                    this.domElement.addEventListener('wheel', this.onWheel.bind(this));
                 }
-            }
 
-            onPointerMove(event) {
-                if (this.state === this.STATE.ROTATE) {
-                    const deltaX = (event.clientX - this.startPoint.x) * 0.01;
-                    const deltaY = (event.clientY - this.startPoint.y) * 0.01;
+                onPointerDown(event) {
+                    event.preventDefault();
 
-                    this.rotate(deltaX, deltaY);
+                    if (event.button === 0) {
+                        this.state = this.STATE.ROTATE;
+                    } else if (event.button === 1) {
+                        this.state = this.STATE.ZOOM;
+                    } else if (event.button === 2) {
+                        this.state = this.STATE.PAN;
+                    }
 
                     this.startPoint = {
                         x: event.clientX,
                         y: event.clientY
                     };
                 }
-            }
 
-            onTouchMove(event) {
-                event.preventDefault();
+                onTouchStart(event) {
+                    event.preventDefault();
 
-                if (this.state === this.STATE.ROTATE && event.touches.length === 1) {
-                    const deltaX = (event.touches[0].clientX - this.startPoint.x) * 0.01;
-                    const deltaY = (event.touches[0].clientY - this.startPoint.y) * 0.01;
+                    if (event.touches.length === 1) {
+                        this.state = this.STATE.ROTATE;
+                        this.startPoint = {
+                            x: event.touches[0].clientX,
+                            y: event.touches[0].clientY
+                        };
+                    } else if (event.touches.length === 2) {
+                        this.state = this.STATE.ZOOM;
+                        const dx = event.touches[0].clientX - event.touches[1].clientX;
+                        const dy = event.touches[0].clientY - event.touches[1].clientY;
+                        this.startDistance = Math.sqrt(dx * dx + dy * dy);
+                    }
+                }
 
-                    this.rotate(deltaX, deltaY);
+                onPointerMove(event) {
+                    if (this.state === this.STATE.ROTATE) {
+                        const deltaX = (event.clientX - this.startPoint.x) * 0.01;
+                        const deltaY = (event.clientY - this.startPoint.y) * 0.01;
 
-                    this.startPoint = {
-                        x: event.touches[0].clientX,
-                        y: event.touches[0].clientY
-                    };
-                } else if (this.state === this.STATE.ZOOM && event.touches.length === 2) {
-                    const dx = event.touches[0].clientX - event.touches[1].clientX;
-                    const dy = event.touches[0].clientY - event.touches[1].clientY;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+                        this.rotate(deltaX, deltaY);
 
-                    const delta = (distance - this.startDistance) * 0.01;
+                        this.startPoint = {
+                            x: event.clientX,
+                            y: event.clientY
+                        };
+                    }
+                }
+
+                onTouchMove(event) {
+                    event.preventDefault();
+
+                    if (this.state === this.STATE.ROTATE && event.touches.length === 1) {
+                        const deltaX = (event.touches[0].clientX - this.startPoint.x) * 0.01;
+                        const deltaY = (event.touches[0].clientY - this.startPoint.y) * 0.01;
+
+                        this.rotate(deltaX, deltaY);
+
+                        this.startPoint = {
+                            x: event.touches[0].clientX,
+                            y: event.touches[0].clientY
+                        };
+                    } else if (this.state === this.STATE.ZOOM && event.touches.length === 2) {
+                        const dx = event.touches[0].clientX - event.touches[1].clientX;
+                        const dy = event.touches[0].clientY - event.touches[1].clientY;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        const delta = (distance - this.startDistance) * 0.01;
+                        this.zoom(delta);
+
+                        this.startDistance = distance;
+                    }
+                }
+
+                onPointerUp() {
+                    this.state = this.STATE.NONE;
+                }
+
+                onWheel(event) {
+                    event.preventDefault();
+
+                    const delta = -Math.sign(event.deltaY) * 0.1;
                     this.zoom(delta);
-
-                    this.startDistance = distance;
                 }
-            }
 
-            onPointerUp() {
-                this.state = this.STATE.NONE;
-            }
+                rotate(deltaX, deltaY) {
+                    const rotationMatrixY = new THREE.Matrix4().makeRotationY(-deltaX * this.rotateSpeed);
+                    const rotationMatrixX = new THREE.Matrix4().makeRotationX(-deltaY * this.rotateSpeed);
 
-            onWheel(event) {
-                event.preventDefault();
+                    const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
 
-                const delta = -Math.sign(event.deltaY) * 0.1;
-                this.zoom(delta);
-            }
+                    offset.applyMatrix4(rotationMatrixY);
+                    offset.applyMatrix4(rotationMatrixX);
 
-            rotate(deltaX, deltaY) {
-                // Rotationsmatrizen erstellen
-                const rotationMatrixY = new THREE.Matrix4().makeRotationY(-deltaX * this.rotateSpeed);
-                const rotationMatrixX = new THREE.Matrix4().makeRotationX(-deltaY * this.rotateSpeed);
-
-                // Richtungsvektor von Kamera zum Ziel
-                const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
-
-                // Rotationen anwenden
-                offset.applyMatrix4(rotationMatrixY);
-                offset.applyMatrix4(rotationMatrixX);
-
-                // Neue Kameraposition setzen
-                this.camera.position.copy(this.target).add(offset);
-
-                // Kamera auf Ziel ausrichten
-                this.camera.lookAt(this.target);
-            }
-
-            zoom(delta) {
-                // Richtungsvektor von Kamera zum Ziel
-                const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
-
-                // Neue Entfernung berechnen
-                const currentDistance = offset.length();
-                const newDistance = currentDistance * (1 - delta);
-
-                // Entfernungsgrenzen anwenden
-                if (newDistance >= this.minDistance && newDistance <= this.maxDistance) {
-                    // Offset-Vektor skalieren
-                    offset.multiplyScalar(1 - delta);
-
-                    // Neue Kameraposition setzen
                     this.camera.position.copy(this.target).add(offset);
+
+                    this.camera.lookAt(this.target);
+                }
+
+                zoom(delta) {
+                    const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
+
+                    const currentDistance = offset.length();
+                    const newDistance = currentDistance * (1 - delta);
+
+                    if (newDistance >= this.minDistance && newDistance <= this.maxDistance) {
+                        offset.multiplyScalar(1 - delta);
+
+                        this.camera.position.copy(this.target).add(offset);
+                    }
+                }
+
+                update() {
+                    return true;
                 }
             }
 
-            update() {
-                // Nichts notwendig für diese Implementierung
-                return true;
+            const controls = new OrbitControls(camera, renderer.domElement);
+
+            let animationId;
+
+            function animate() {
+                animationId = requestAnimationFrame(animate);
+                renderer.render(scene, camera);
             }
+
+            function handleResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            window.addEventListener('resize', handleResize);
+
+            ladeUndVisualisiereMatrix();
+            animate();
         }
-
-        // Controls initialisieren
-        const controls = new OrbitControls(camera, renderer.domElement);
-
-        // Animieren - ohne automatische Rotation
-        function animate() {
-            requestAnimationFrame(animate);
-            // Szene rendern
-            renderer.render(scene, camera);
-        }
-
-        // Fenstergröße behandeln
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // Visualisierung initialisieren
-        ladeUndVisualisiereMatrix();
-        animate();
     </script>
 </body>
 </html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Eigenvalues</title>
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            font-family: 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        select {
+            background-color: black;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 0;
+            font-family: 'Times New Roman', serif;
+            font-size: 1rem;
+            margin-bottom: 3rem;
+            cursor: pointer;
+            outline: none;
+        }
+
+        select:focus {
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .equation-display {
+            text-align: center;
+            font-size: 2.5rem;
+            line-height: 1.5;
+            letter-spacing: 1px;
+        }
+
+        .energy-equation {
+            margin: 12px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .psi {
+            font-style: italic;
+            margin: 0 8px;
+        }
+
+        .eq {
+            margin: 0 12px;
+        }
+
+        .loading {
+            opacity: 0.6;
+            font-size: 1.5rem;
+            font-style: italic;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <a href="/equation" id="back-button" style="
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background-color: black;
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 8px 16px;
+        font-family: 'Times New Roman', serif;
+        font-size: 1rem;
+        text-decoration: none;
+        cursor: pointer;">
+        Zurück
+    </a>
+    <select id="b-field-select">
+        <option value="">Lädt eigenwerte...</option>
+    </select>
+
+    <div id="equation-display" class="equation-display">
+        <div class="loading">Wählen Sie einen B-Feld-Wert</div>
+    </div>
+
+    <script>
+        const bFieldSelect = document.getElementById('b-field-select');
+        const equationDisplay = document.getElementById('equation-display');
+
+        // Load available B fields on page load
+        document.addEventListener('DOMContentLoaded', fetchAvailableBFields);
+
+        // Add event listener for B-field selection
+        bFieldSelect.addEventListener('change', loadEnergyValues);
+
+        // Fetch available B fields
+        function fetchAvailableBFields() {
+            fetch('/available_b_fields')
+                .then(response => response.json())
+                .then(data => {
+                    populateBFieldSelect(data.fields);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    equationDisplay.innerHTML = '<div class="loading">Eigenwerte konnten nicht geladen werden</div>';
+                });
+        }
+
+        // Populate B field select dropdown
+        function populateBFieldSelect(fields) {
+            bFieldSelect.innerHTML = '';
+
+            if (fields.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Kein B-Feld-Wert verfügbar';
+                bFieldSelect.appendChild(option);
+                return;
+            }
+
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Wähle B-Feld-Wert';
+            bFieldSelect.appendChild(defaultOption);
+
+            fields.forEach(field => {
+                const option = document.createElement('option');
+                option.value = field;
+                option.textContent = `${field} T`;
+                bFieldSelect.appendChild(option);
+            });
+        }
+
+        // Load energy values for selected B field
+        function loadEnergyValues() {
+            const selectedField = bFieldSelect.value;
+
+            if (!selectedField) {
+                equationDisplay.innerHTML = '<div class="loading">Wählen Sie einen B-Feld-Wert</div>';
+                return;
+            }
+
+            // Show loading message
+            equationDisplay.innerHTML = '<div class="loading">Lädt eigenwerte...</div>';
+
+            // Construct filename
+            const filename = `numerical_solution_B${selectedField}.000T.json`;
+
+            // Fetch energy values
+            fetch(`/api/eigenwerte/${filename}`)
+                .then(response => response.json())
+                .then(data => {
+                    displayEnergyValues(data.energy, data.B_tesla);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    equationDisplay.innerHTML = '<div class="loading">Eigenwerte konnten nicht geladen werden</div>';
+                });
+        }
+
+        // Extract numeric value from possibly complex data
+        function extractEnergyValue(energy) {
+            // If it's already a number, return it
+            if (typeof energy === 'number') {
+                return energy.toFixed(6);
+            }
+
+            // If it's a string that can be converted to a number
+            if (typeof energy === 'string') {
+                const num = parseFloat(energy);
+                if (!isNaN(num)) {
+                    return num.toFixed(6);
+                }
+                return energy;
+            }
+
+            // If it's an object, try to find a numeric property
+            if (typeof energy === 'object' && energy !== null) {
+                // Try common property names that might contain the energy value
+                const possibleKeys = ['value', 'energy', 'e', 'ev', 'eigenvalue'];
+
+                for (const key of possibleKeys) {
+                    if (key in energy && typeof energy[key] === 'number') {
+                        return energy[key].toFixed(6);
+                    }
+                }
+
+                // If no suitable property was found, return the first numeric property
+                for (const key in energy) {
+                    if (typeof energy[key] === 'number') {
+                        return energy[key].toFixed(6);
+                    }
+                }
+
+                // Last resort: try to get the first element if it's an array
+                if (Array.isArray(energy) && energy.length > 0) {
+                    const firstElement = energy[0];
+                    if (typeof firstElement === 'number') {
+                        return firstElement.toFixed(6);
+                    }
+                }
+            }
+
+            // If all else fails, return a placeholder
+            return "?";
+        }
+
+        // Display energy values as equations
+        function displayEnergyValues(energyValues, bTesla) {
+            equationDisplay.innerHTML = `<div style="margin-bottom: 1.5rem;">B = ${bTesla} T</div>`;
+
+            // Make sure energyValues is an array
+            const energyArray = Array.isArray(energyValues) ? energyValues : [energyValues];
+
+            energyArray.forEach((energy, index) => {
+                const equationElement = document.createElement('div');
+                equationElement.className = 'energy-equation';
+
+                // Extract the numeric energy value
+                const energyValue = extractEnergyValue(energy);
+
+                equationElement.innerHTML = `
+                    <span>H</span>
+                    <span class="psi">ψ<sub>${index}</sub></span>
+                    <span class="eq">=</span>
+                    <span>${energyValue}</span>
+                    <span class="psi">ψ<sub>${index}</sub></span>
+                `;
+                equationDisplay.appendChild(equationElement);
+            });
+        }
+    </script>
+</body>
+</html>

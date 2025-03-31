@@ -317,6 +317,26 @@
             color: white;
             border-color: #45a049;
         }
+        .theory-link {
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .theory-link a {
+            display: inline-block;
+            width: auto;
+            padding: 10px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .theory-link a:hover {
+            background: #45a049;
+        }
         @media (max-width: 768px) {
             #controls {
                 width: 100%;
@@ -349,6 +369,11 @@
             <div class="view-toggle">
                 <button class="view-toggle-btn active" id="wavefunction-btn">Wellenfunktion</button>
                 <button class="view-toggle-btn" id="matrix-btn">Hamilton-Matrix</button>
+            </div>
+
+            <!-- Link to Equation -->
+            <div class="theory-link">
+                <a href="/equation">Matrix Eigenwertproblem</a>
             </div>
 
             <!-- Magnetfeld Auswahl -->

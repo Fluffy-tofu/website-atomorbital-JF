@@ -16,7 +16,7 @@ def calculate_hamilton_matrix_only(B_tesla):
         print(f"Calculating Hamilton matrix for B = {B_tesla} T ({B_au:.6e} a.u.)")
 
         # Problem parameters
-        n = 100  # grid points
+        n = 35  # grid points
         a = max(20, 40 / np.sqrt(1 + abs(B_au)))  # adaptive box size
         d = a / n  # step size
 
