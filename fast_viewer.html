@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Matrix Viewer (with BSON format)</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        select { padding: 5px; margin: 10px 0; }
+        button { padding: 5px 10px; margin-right: 10px; }
+        #matrixInfo { margin-top: 20px; white-space: pre; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Fast Matrix Viewer</h1>
+    <div>
+        <select id="fileSelector">
+            <!-- Will be populated with available BSON files -->
+        </select>
+        <button id="loadBtn">Load Matrix</button>
+    </div>
+    <div id="matrixInfo"></div>
+
+    <script>
+        // Load available BSON files
+        async function loadAvailableFiles() {
+            try {
+                const response = await fetch('/list_converted_files');
+                const files = await response.json();
+
+                const selector = document.getElementById('fileSelector');
+                selector.innerHTML = '';
+
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = file;
+                    selector.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading file list:', error);
+            }
+        }
+
+        // Load matrix from BSON file
+        async function loadMatrix() {
+            const filename = document.getElementById('fileSelector').value;
+            const infoDiv = document.getElementById('matrixInfo');
+
+            if (!filename) {
+                infoDiv.textContent = 'Please select a file';
+                return;
+            }
+
+            try {
+                infoDiv.textContent = 'Loading...';
+
+                const response = await fetch(`/converted_data/${filename}`);
+                const arrayBuffer = await response.arrayBuffer();
+
+                // Use BSON.js library to decode
+                const data = BSON.deserialize(new Uint8Array(arrayBuffer));
+
+                // Display matrix info
+                let info = `Filename: ${data.filename}
+`;
+                info += `B-Field: ${data.B_tesla} T
+`;
+                info += `Timestamp: ${data.timestamp}
+`;
+                info += `Matrix size: ${data.H.length}x${data.H[0].length}
+`;
+                info += `
+Sample (first 5x5):
+`;
+
+                // Display a small sample of the matrix
+                for (let i = 0; i < Math.min(5, data.H.length); i++) {
+                    let row = '';
+                    for (let j = 0; j < Math.min(5, data.H[i].length); j++) {
+                        row += data.H[i][j].toFixed(4).padStart(10) + ' ';
+                    }
+                    info += row + '
+';
+                }
+
+                infoDiv.textContent = info;
+            } catch (error) {
+                infoDiv.textContent = `Error loading matrix: ${error.message}`;
+                console.error('Error:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAvailableFiles();
+            document.getElementById('loadBtn').addEventListener('click', loadMatrix);
+        });
+    </script>
+
+    <!-- Add BSON.js for handling binary JSON -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bson/4.7.2/bson.bundle.min.js"></script>
+</body>
+</html>
+    
